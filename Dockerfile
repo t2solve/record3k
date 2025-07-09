@@ -37,4 +37,4 @@ RUN export CWD="/app/vimbax/cti" && \
 ENV GENICAM_GENTL64_PATH=:/app/vimbax/cti
 
 # Run the application
-CMD ["/app/bin/cmd" ,"/app/conf/cams.json", "/app/conf/settingsCamProGT.xml"] 
+CMD ["/app/bin/test"] 

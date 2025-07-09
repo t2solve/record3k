@@ -53,11 +53,12 @@ int main()
         qCritical() << "[ERROR] Failed to open camera. Code:" << err;
         return 1;
     }
+   
 
     FramePtrVector frames(5);
     IFrameObserverPtr observer(new FrameObserver(camera));
-    FeaturePtr feature;
     VmbUint32_t payloadSize;
+    qDebug() << "[INFO] Registering frame observer...";
 
     err = camera->GetPayloadSize(payloadSize);
     qDebug() << "[INFO] Camera payload size:" << payloadSize;
@@ -82,12 +83,45 @@ int main()
         // Optionally: break or return 1; if you want to abort on error
        }
     }
-
+    FeaturePtr feature;
     err = camera->GetFeatureByName("AcquisitionMode", feature);
-    err = feature->SetValue("Continuous");
+    if (err == VmbErrorSuccess) {
+      err = feature->SetValue("Continuous");
+      if (err != VmbErrorSuccess) {
+         qWarning() << "[Camera] Failed to set AcquisitionMode to Continuous. Error:" << err;
+      }
+    } else {
+      qWarning() << "[Camera] Failed to get AcquisitionMode feature. Error:" << err;
+    }
+    err = camera->GetFeatureByName("TriggerMode", feature);
+    if (err == VmbErrorSuccess) {
+         err = feature->SetValue("Off");
+         if (err != VmbErrorSuccess) {
+            qWarning() << "[Camera] Failed to set TriggerMode to Off. Error:" << err;
+         }
+    }else {
+         qWarning() << "[Camera] Failed to get TriggerMode feature. Error:" << err;
+      }
+   err = camera->GetFeatureByName("PixelFormat", feature);
+      if (err == VmbErrorSuccess) {
+           err = feature->SetValue("BayerRG8");
+           if (err != VmbErrorSuccess) {
+              qWarning() << "[Camera] Failed to set PixelFormat to BayerRG8. Error:" << err;
+           }
+        } else {
+           qWarning() << "[Camera] Failed to get PixelFormat feature. Error:" << err;
+        }
     err = camera->GetFeatureByName("AcquisitionStart", feature);
+    if (err != VmbErrorSuccess) {
+        qCritical() << "[ERROR] Failed to get AcquisitionStart feature. Code:" << err;
+        return 1;
+    }
     qDebug() << "[INFO] Starting acquisition...";
     err = feature->RunCommand();
+    if (err != VmbErrorSuccess) {
+        qCritical() << "[ERROR] Failed to run AcquisitionStart command. Code:" << err;
+        return 1;
+    }
 
     // Program runtime ...
     qDebug() << "[INFO] Acquisition running. Press Ctrl+C to exit.";
