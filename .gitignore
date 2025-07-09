@@ -1,0 +1,86 @@
+
+# bin folder 
+bin/*
+obj/* 
+
+# Qt/qmake build artifacts
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.exe
+*.user
+*.pro.user
+*.qmake.stash
+*.qmake.cache
+*.moc
+*.prl
+*.app
+*.dSYM/
+*.swp
+*.swo
+*.bak
+*.tmp
+*.log
+*.pch
+*.autosave
+
+# Qt Creator
+*.pro.user*
+*.qbs.user*
+*.creator.user*
+*.creator*
+*.autosave
+
+# Build directories
+build/
+build-*/
+*.build/
+*.bin/
+*.lib/
+*.dll/
+*.exe/
+*.out/
+*.app/
+*.dylib/
+*.DS_Store
+
+# Generated files
+Makefile
+Makefile.*
+*.moc/*
+*.rcc/*
+*.ui/*
+
+# CMake (if used)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+install_manifest.txt
+
+# Misc
+*.orig
+*.rej
+*.sublime*
+.cache/
+*.jpg
+*.png
+*.bmp
+*.tiff
+*.zip
+*.tar
+*.gz
+*.7z
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Local config
+.env
+.env.*
+
+# VSCode
+.vscode/
