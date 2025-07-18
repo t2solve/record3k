@@ -53,25 +53,34 @@ public:
 
         return image;
     }
-    
+        
     static cv::Mat generateMovingObjectSequence(int frameNumber, int width = 640, int height = 480) {
+        // Create base image
         cv::Mat image = cv::Mat::zeros(height, width, CV_8UC3);
         
-        // Static background
-        image.setTo(cv::Scalar(50, 50, 50));
+        // Create a simple background
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int intensity = static_cast<int>(50 + 30 * sin(x * 0.01) * cos(y * 0.01));
+                image.at<cv::Vec3b>(y, x) = cv::Vec3b(intensity, intensity, intensity);
+            }
+        }
         
-        // Add some static objects
-        cv::rectangle(image, cv::Rect(50, 50, 100, 100), cv::Scalar(100, 100, 100), -1);
-        cv::rectangle(image, cv::Rect(width-150, height-150, 100, 100), cv::Scalar(80, 80, 80), -1);
+        // Add moving objects
+        int objectX = (frameNumber * 10) % width;
+        int objectY = height / 2 + static_cast<int>(50 * sin(frameNumber * 0.1));
         
-        // Moving object
-        int x = (frameNumber * 3) % (width - 50);
-        int y = height/2 + 30 * sin(frameNumber * 0.1);
-        cv::circle(image, cv::Point(x, y), 25, cv::Scalar(0, 255, 0), -1);
+        // Moving circle
+        cv::circle(image, cv::Point(objectX, objectY), 30, cv::Scalar(0, 255, 0), -1);
         
-        // Add noise
-        cv::Mat noise;
-        cv::randn(noise, cv::Scalar::all(0), cv::Scalar::all(5));
+        // Moving rectangle
+        int rectX = ((frameNumber * 8) + 200) % width;
+        int rectY = height / 3;
+        cv::rectangle(image, cv::Rect(rectX, rectY, 40, 60), cv::Scalar(255, 0, 0), -1);
+        
+        // Add some noise - FIX: Initialize noise matrix first
+        cv::Mat noise(image.size(), image.type());
+        cv::randu(noise, cv::Scalar::all(0), cv::Scalar::all(10));
         image += noise;
         
         return image;
