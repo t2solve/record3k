@@ -1,3 +1,3 @@
 # #!/bin/bash
 
-/app/bin/./test 
+/app/bin/./test2 

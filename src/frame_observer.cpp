@@ -41,8 +41,8 @@ void FrameObserver::FrameReceived(const FramePtr pFrame)
             pFrame->GetPixelFormat(pixelFormat);
             qDebug() << "[FrameObserver] Frame pixel format:" << pixelFormat;
 
-            FrameMemoryObject memoryObject = FrameConverter::convertVmbFrameToMemoryObject(frame, m_debugMode);
-            cv::Mat img = memoryObject.getCpuMat();
+            FrameMemoryObject memoryObject = FrameConverter::convertVmbFrameToMemoryObject(pFrame, false);
+            cv::Mat image = memoryObject.getCpuMat();
             // // Adjust type if your camera is not 8UC1
             // cv::Mat img(height, width, CV_8UC1, buffer);
             // if (img.empty() || img.rows != (int)height || img.cols != (int)width) {
@@ -52,7 +52,7 @@ void FrameObserver::FrameReceived(const FramePtr pFrame)
             // }
             std::ostringstream filename;
             filename << "/tmp/frame_" << std::setw(5) << std::setfill('0') << frameCount << ".jpg";
-            bool success = cv::imwrite(filename.str(), img);
+            bool success = cv::imwrite(filename.str(), image);
             if (success) {
                 qDebug() << "[FrameObserver] Saved frame to" << QString::fromStdString(filename.str());
             } else {

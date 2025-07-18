@@ -1,241 +1,109 @@
 #include "frame_memory_object.h"
-#include <opencv2/opencv.hpp>
-#ifdef CUDA_ENABLED
-#include <opencv2/cudaimgproc.hpp>
-#include <opencv2/cudaarithm.hpp>
-#endif
+#include <stdexcept>
 
-FrameMemoryObject::FrameMemoryObject() : memoryLocation(MemoryLocation::CPU) {}
+FrameMemoryObject::FrameMemoryObject() 
+    : m_memoryLocation(MemoryLocation::CPU), m_hasCpuData(false), m_hasGpuData(false) {
+}
 
 FrameMemoryObject::FrameMemoryObject(const cv::Mat& mat) 
-    : cpuMat(mat), memoryLocation(MemoryLocation::CPU) {}
+    : m_cpuMat(mat), m_memoryLocation(MemoryLocation::CPU), m_hasCpuData(true), m_hasGpuData(false) {
+}
 
 #ifdef CUDA_ENABLED
 FrameMemoryObject::FrameMemoryObject(const cv::cuda::GpuMat& gpuMat) 
-    : gpuMat(gpuMat), memoryLocation(MemoryLocation::GPU) {}
+    : m_gpuMat(gpuMat), m_memoryLocation(MemoryLocation::GPU), m_hasCpuData(false), m_hasGpuData(true) {
+}
 #endif
 
 FrameMemoryObject::~FrameMemoryObject() {
-    // OpenCV handles memory cleanup automatically
-}
-
-FrameMemoryObject::FrameMemoryObject(const FrameMemoryObject& other) {
-    copyFrom(other);
-}
-
-FrameMemoryObject& FrameMemoryObject::operator=(const FrameMemoryObject& other) {
-    if (this != &other) {
-        copyFrom(other);
-    }
-    return *this;
-}
-
-void FrameMemoryObject::copyFrom(const FrameMemoryObject& other) {
-    memoryLocation = other.memoryLocation;
-    
-    if (other.memoryLocation == MemoryLocation::CPU) {
-        cpuMat = other.cpuMat.clone();
-#ifdef CUDA_ENABLED
-        gpuMat.release();
-#endif
-    }
-#ifdef CUDA_ENABLED
-    else if (other.memoryLocation == MemoryLocation::GPU) {
-        other.gpuMat.copyTo(gpuMat);
-        cpuMat.release();
-    }
-#endif
+    release();
 }
 
 bool FrameMemoryObject::isEmpty() const {
-    if (memoryLocation == MemoryLocation::CPU) {
-        return cpuMat.empty();
+    if (m_memoryLocation == MemoryLocation::CPU) {
+        return m_cpuMat.empty();
     }
 #ifdef CUDA_ENABLED
-    else if (memoryLocation == MemoryLocation::GPU) {
-        return gpuMat.empty();
+    else {
+        return m_gpuMat.empty();
     }
 #endif
     return true;
 }
 
-cv::Size FrameMemoryObject::size() const {
-    if (memoryLocation == MemoryLocation::CPU) {
-        return cpuMat.size();
-    }
+cv::Mat FrameMemoryObject::getCpuMat() const {  // Fix: make const, remove parameter
+    if (!m_hasCpuData && m_hasGpuData) {
 #ifdef CUDA_ENABLED
-    else if (memoryLocation == MemoryLocation::GPU) {
-        return gpuMat.size();
-    }
+        m_gpuMat.download(const_cast<cv::Mat&>(m_cpuMat));
+        const_cast<FrameMemoryObject*>(this)->m_hasCpuData = true;
 #endif
-    return cv::Size(0, 0);
+    }
+    return m_cpuMat;
 }
 
-int FrameMemoryObject::type() const {
-    if (memoryLocation == MemoryLocation::CPU) {
-        return cpuMat.type();
-    }
 #ifdef CUDA_ENABLED
-    else if (memoryLocation == MemoryLocation::GPU) {
-        return gpuMat.type();
+cv::cuda::GpuMat FrameMemoryObject::getGpuMat() const {
+    if (!m_hasGpuData && m_hasCpuData) {
+        const_cast<cv::cuda::GpuMat&>(m_gpuMat).upload(m_cpuMat);
+        const_cast<FrameMemoryObject*>(this)->m_hasGpuData = true;
     }
-#endif
-    return -1;
+    // Return compatible version without modifying original
+    return ensureCudaFilterCompatible(m_gpuMat);
 }
+#endif
 
-int FrameMemoryObject::channels() const {
-    if (memoryLocation == MemoryLocation::CPU) {
-        return cpuMat.channels();
+FrameMemoryObject FrameMemoryObject::clone() const {
+    if (m_memoryLocation == MemoryLocation::CPU) {
+        return FrameMemoryObject(m_cpuMat.clone());
     }
 #ifdef CUDA_ENABLED
-    else if (memoryLocation == MemoryLocation::GPU) {
-        return gpuMat.channels();
+    else {
+        cv::cuda::GpuMat clonedGpu;
+        m_gpuMat.copyTo(clonedGpu);
+        return FrameMemoryObject(clonedGpu);
     }
 #endif
-    return 0;
+    return FrameMemoryObject();
 }
 
 MemoryLocation FrameMemoryObject::getMemoryLocation() const {
-    return memoryLocation;
-}
-
-cv::Mat& FrameMemoryObject::getCpuMat() {
-    ensureCpuMemory();
-    return cpuMat;
-}
-
-const cv::Mat& FrameMemoryObject::getCpuMat() const {
-    const_cast<FrameMemoryObject*>(this)->ensureCpuMemory();
-    return cpuMat;
-}
-
-#ifdef CUDA_ENABLED
-cv::cuda::GpuMat& FrameMemoryObject::getGpuMat() {
-    ensureGpuMemory();
-    return gpuMat;
-}
-
-const cv::cuda::GpuMat& FrameMemoryObject::getGpuMat() const {
-    const_cast<FrameMemoryObject*>(this)->ensureGpuMemory();
-    return gpuMat;
-}
-#endif
-
-void FrameMemoryObject::ensureCpuMemory() {
-    if (memoryLocation == MemoryLocation::CPU) {
-        return; // Already on CPU
-    }
-    
-#ifdef CUDA_ENABLED
-    if (memoryLocation == MemoryLocation::GPU) {
-        // Download from GPU to CPU
-        gpuMat.download(cpuMat);
-        memoryLocation = MemoryLocation::CPU;
-    }
-#endif
-}
-
-void FrameMemoryObject::ensureGpuMemory() {
-#ifdef CUDA_ENABLED
-    if (memoryLocation == MemoryLocation::GPU) {
-        return; // Already on GPU
-    }
-    
-    if (memoryLocation == MemoryLocation::CPU) {
-        // Upload from CPU to GPU
-        gpuMat.upload(cpuMat);
-        memoryLocation = MemoryLocation::GPU;
-    }
-#endif
+    return m_memoryLocation;
 }
 
 void FrameMemoryObject::moveToMemoryLocation(MemoryLocation targetLocation) {
-    if (memoryLocation == targetLocation) {
-        return; // Already at target location
+    if (m_memoryLocation == targetLocation) {
+        return;
     }
     
     if (targetLocation == MemoryLocation::CPU) {
         ensureCpuMemory();
-    }
-#ifdef CUDA_ENABLED
-    else if (targetLocation == MemoryLocation::GPU) {
+    } else {
         ensureGpuMemory();
     }
-#endif
-}
-
-void FrameMemoryObject::release() {
-    cpuMat.release();
-#ifdef CUDA_ENABLED
-    gpuMat.release();
-#endif
-    memoryLocation = MemoryLocation::CPU;
-}
-
-FrameMemoryObject FrameMemoryObject::clone() const {
-    FrameMemoryObject result;
-    result.copyFrom(*this);
-    return result;
-}
-
-void FrameMemoryObject::copyTo(FrameMemoryObject& dest) const {
-    dest.copyFrom(*this);
-}
-
-bool FrameMemoryObject::isOnCpu() const {
-    return memoryLocation == MemoryLocation::CPU;
-}
-
-bool FrameMemoryObject::isOnGpu() const {
-    return memoryLocation == MemoryLocation::GPU;
-}
-
-size_t FrameMemoryObject::getMemoryUsage() const {
-    size_t usage = 0;
     
-    if (!cpuMat.empty()) {
-        usage += cpuMat.total() * cpuMat.elemSize();
-    }
-    
-#ifdef CUDA_ENABLED
-    if (!gpuMat.empty()) {
-        usage += gpuMat.total() * gpuMat.elemSize();
-    }
-#endif
-    
-    return usage;
+    m_memoryLocation = targetLocation;
 }
 
 std::string FrameMemoryObject::getInfo() const {
-    std::ostringstream oss;
-    oss << "FrameMemoryObject: ";
-    
-    if (isEmpty()) {
-        oss << "empty";
-    } else {
-        cv::Size s = size();
-        oss << s.width << "x" << s.height 
-            << " type=" << type() 
-            << " channels=" << channels()
-            << " location=" << (memoryLocation == MemoryLocation::CPU ? "CPU" : "GPU")
-            << " memory=" << getMemoryUsage() << " bytes";
+    std::string info = "FrameMemoryObject: ";
+    info += (m_memoryLocation == MemoryLocation::CPU ? "CPU" : "GPU");
+    if (!isEmpty()) {
+        cv::Size size = m_cpuMat.size();
+        info += " " + std::to_string(size.width) + "x" + std::to_string(size.height);
     }
-    
-    return oss.str();
+    return info;
 }
 
-void FrameMemoryObject::optimizeMemoryUsage() {
-    // Keep only the data in the current memory location
-    if (memoryLocation == MemoryLocation::CPU) {
-#ifdef CUDA_ENABLED
-        gpuMat.release();
-#endif
+int FrameMemoryObject::channels() const {
+    if (m_memoryLocation == MemoryLocation::CPU && !m_cpuMat.empty()) {
+        return m_cpuMat.channels();
     }
 #ifdef CUDA_ENABLED
-    else if (memoryLocation == MemoryLocation::GPU) {
-        cpuMat.release();
+    else if (m_memoryLocation == MemoryLocation::GPU && !m_gpuMat.empty()) {
+        return m_gpuMat.channels();
     }
 #endif
+    return 0;
 }
 
 bool FrameMemoryObject::isCudaAvailable() {
@@ -244,4 +112,31 @@ bool FrameMemoryObject::isCudaAvailable() {
 #else
     return false;
 #endif
+}
+
+void FrameMemoryObject::ensureCpuMemory() {
+    if (!m_hasCpuData && m_hasGpuData) {
+#ifdef CUDA_ENABLED
+        m_gpuMat.download(m_cpuMat);
+        m_hasCpuData = true;
+#endif
+    }
+}
+
+void FrameMemoryObject::ensureGpuMemory() {
+#ifdef CUDA_ENABLED
+    if (!m_hasGpuData && m_hasCpuData) {
+        m_gpuMat.upload(m_cpuMat);
+        m_hasGpuData = true;
+    }
+#endif
+}
+
+void FrameMemoryObject::release() {
+    m_cpuMat.release();
+#ifdef CUDA_ENABLED
+    m_gpuMat.release();
+#endif
+    m_hasCpuData = false;
+    m_hasGpuData = false;
 }

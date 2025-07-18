@@ -4,12 +4,27 @@
 #include "frame_memory_object.h"
 #include <string>
 #include <map>
+#include <memory>
 
 // Processing modes
 enum class ProcessingMode {
     CPU_ONLY,
     CUDA_PREFERRED,
     CUDA_ONLY
+};
+
+enum class FilterType {
+    NONE,
+    GAUSSIAN_BLUR,
+    BILATERAL_FILTER,
+    MEDIAN_FILTER,
+    EDGE_DETECTION,
+    SHARPEN,
+    DENOISE,
+    BACKGROUND_SUBTRACTION_MOG2,
+    BACKGROUND_SUBTRACTION_GMG,
+    BACKGROUND_SUBTRACTION_CNT,
+    CUSTOM
 };
 
 // Configuration structure for parameterized filters
@@ -34,13 +49,6 @@ public:
     // Process a frame with given configuration using FrameMemoryObject
     virtual FrameMemoryObject process(const FrameMemoryObject& input, const FilterConfig& config) = 0;
     
-    // Legacy process method for backward compatibility
-    virtual cv::Mat process(const cv::Mat& input, const FilterConfig& config) {
-        FrameMemoryObject frameObj(input);
-        FrameMemoryObject result = process(frameObj, config);
-        return result.getCpuMat();
-    }
-    
     // Get the name/type of this processing step
     virtual std::string getName() const = 0;
     
@@ -50,6 +58,6 @@ public:
     // Get processing mode (CPU or CUDA)
     virtual ProcessingMode getMode() const = 0;
     
-    // Get preferred memory type for this step
-    virtual MemoryType getPreferredMemoryType() const = 0;
+    // Get preferred memory location for this step
+    virtual MemoryLocation getPreferredMemoryLocation() const = 0;
 };

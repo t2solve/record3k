@@ -15,6 +15,15 @@
  */
 class ProcessingPipeline {
 public:
+    struct StepProfile {
+        std::string stepName;
+        std::chrono::microseconds processingTime;
+        std::chrono::microseconds conversionTime;
+        MemoryLocation inputMemoryLocation;
+        MemoryLocation outputMemoryLocation;
+        bool memoryConversionOccurred;
+    };
+
     /**
      * @brief Execute a series of processing steps on a frame
      * 
@@ -39,7 +48,7 @@ public:
     /**
      * @brief Analyze the pipeline to determine optimal memory strategy
      */
-    static MemoryType determineOptimalMemoryType(
+    static MemoryLocation determineOptimalMemoryLocation(
         const std::vector<std::shared_ptr<ProcessStep>>& steps);
     
 private:
@@ -49,5 +58,5 @@ private:
     static size_t countConsecutiveSteps(
         const std::vector<std::shared_ptr<ProcessStep>>& steps,
         size_t startIndex,
-        MemoryType memoryType);
+        MemoryLocation memoryLocation);
 };
