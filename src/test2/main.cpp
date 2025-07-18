@@ -11,8 +11,11 @@
 #include "../processing_pipeline.h"
 #include "../frame_memory_object.h"
 #include "../pipeline_profiler.h"
+#include "../pipeline_config_loader.h"
 
 #include "test_image_generator.cpp"
+
+#define ENABLE_PROFILING
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
@@ -43,50 +46,53 @@ int main(int argc, char* argv[]) {
     cv::imwrite("demo_output/00_original.jpg", testImage);
     qDebug() << "Generated test image:" << testImage.cols << "x" << testImage.rows;
     
-    // Create processing pipeline
-    std::vector<std::shared_ptr<ProcessStep>> pipeline;
-    std::vector<FilterConfig> configs;
+    //ProcessingMode mode = cudaAvailable ? ProcessingMode::CUDA_PREFERRED : ProcessingMode::CPU_ONLY;
+    // // Create processing pipeline
+    // std::vector<std::shared_ptr<ProcessStep>> pipeline;
+    // std::vector<FilterConfig> configs;
     
-    ProcessingMode mode = cudaAvailable ? ProcessingMode::CUDA_PREFERRED : ProcessingMode::CPU_ONLY;
     
-    // Step 1: Gaussian Blur (noise reduction)
-    pipeline.push_back(ProcessStepFactory::createGaussianBlur(mode));
-    FilterConfig blurConfig;
-    blurConfig.setParameter("kernel_size", 5);
-    blurConfig.setParameter("sigma_x", 1.0);
-    blurConfig.setParameter("sigma_y", 1.0);
-    configs.push_back(blurConfig);
+    // // Step 1: Gaussian Blur (noise reduction)
+    // pipeline.push_back(ProcessStepFactory::createGaussianBlur(mode));
+    // FilterConfig blurConfig;
+    // blurConfig.setParameter("kernel_size", 5);
+    // blurConfig.setParameter("sigma_x", 1.0);
+    // blurConfig.setParameter("sigma_y", 1.0);
+    // configs.push_back(blurConfig);
     
-    // Step 2: Bilateral Filter (edge-preserving smoothing)
-    pipeline.push_back(ProcessStepFactory::createBilateralFilter(mode));
-    FilterConfig bilateralConfig;
-    bilateralConfig.setParameter("d", 9);
-    bilateralConfig.setParameter("sigma_color", 75.0);
-    bilateralConfig.setParameter("sigma_space", 75.0);
-    configs.push_back(bilateralConfig);
+    // // Step 2: Bilateral Filter (edge-preserving smoothing)
+    // pipeline.push_back(ProcessStepFactory::createBilateralFilter(mode));
+    // FilterConfig bilateralConfig;
+    // bilateralConfig.setParameter("d", 9);
+    // bilateralConfig.setParameter("sigma_color", 75.0);
+    // bilateralConfig.setParameter("sigma_space", 75.0);
+    // configs.push_back(bilateralConfig);
     
-    // Step 3: Sharpen
-    pipeline.push_back(ProcessStepFactory::createSharpen(mode));
-    FilterConfig sharpenConfig;
-    sharpenConfig.setParameter("strength", 1.5);
-    configs.push_back(sharpenConfig);
+    // // Step 3: Sharpen
+    // pipeline.push_back(ProcessStepFactory::createSharpen(mode));
+    // FilterConfig sharpenConfig;
+    // sharpenConfig.setParameter("strength", 1.5);
+    // configs.push_back(sharpenConfig);
     
-    // Step 4: Edge Detection
-    pipeline.push_back(ProcessStepFactory::createEdgeDetection(mode));
-    FilterConfig edgeConfig;
-    edgeConfig.setParameter("threshold1", 100.0);
-    edgeConfig.setParameter("threshold2", 200.0);
-    edgeConfig.setParameter("aperture_size", 3);
-    configs.push_back(edgeConfig);
-    
-    // Process the image
-    qDebug() << "Processing pipeline with" << pipeline.size() << "steps...";
-    
+    // // Step 4: Edge Detection
+    // pipeline.push_back(ProcessStepFactory::createEdgeDetection(mode));
+    // FilterConfig edgeConfig;
+    // edgeConfig.setParameter("threshold1", 100.0);
+    // edgeConfig.setParameter("threshold2", 200.0);
+    // edgeConfig.setParameter("aperture_size", 3);
+    // configs.push_back(edgeConfig);
+    // Load pipeline from XML
+    auto pipeConfig = PipelineConfigLoader::loadFromXML("config.xml");
+    ProcessingMode mode = pipeConfig.mode;
+      // Process the image
+    qDebug() << "Processing pipeline with" << pipeConfig.steps.size() << "steps...";
+
     auto startTime = std::chrono::high_resolution_clock::now();
     
     FrameMemoryObject inputFrame(testImage);
-    FrameMemoryObject result = ProcessingPipeline::processLine(pipeline, inputFrame, configs);
-    
+    //FrameMemoryObject result = ProcessingPipeline::processLine(pipeline, inputFrame, configs);
+    FrameMemoryObject result = ProcessingPipeline::processLine(pipeConfig.steps, inputFrame, pipeConfig.configs);
+
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
     
@@ -118,8 +124,7 @@ int main(int argc, char* argv[]) {
         qDebug() << "Processing step:" << QString::fromStdString(stepName);
         
         // Use appropriate config for each step
-        FilterConfig config = configs[std::min(i, configs.size()-1)];
-        
+        FilterConfig config = pipeConfig.configs[std::min(i, pipeConfig.configs.size()-1)];
         // Process
         auto stepStart = std::chrono::high_resolution_clock::now();
         FrameMemoryObject stepResult = step->process(inputFrame, config);
@@ -169,36 +174,46 @@ int main(int argc, char* argv[]) {
     // Process sequence of frames
     qDebug() << "Processing background subtraction sequence...";
     
-    for (int frame = 0; frame < 30; ++frame) {
-        cv::Mat frameImage = TestImageGenerator::generateMovingObjectSequence(frame);
-        
-        FrameMemoryObject frameInput(frameImage);
-        FrameMemoryObject bgResult = ProcessingPipeline::processLine(bgPipeline, frameInput, bgConfigs);
-        
-        // Save every 5th frame
-        if (frame % 5 == 0) {
-            cv::Mat bgMask = bgResult.getCpuMat();
-            std::string filename = "demo_output/bg_frame_" + std::to_string(frame) + ".jpg";
-            cv::imwrite(filename, bgMask);
-            
-            // Also save original frame
-            std::string origFilename = "demo_output/bg_orig_" + std::to_string(frame) + ".jpg";
-            cv::imwrite(origFilename, frameImage);
-        }
-        
-        if (frame % 10 == 0) {
-            qDebug() << "  Processed frame" << frame;
-        }
+    std::chrono::microseconds totalBgTime(0);
+    int frameCount = 60;
+
+for (int frame = 0; frame < frameCount; ++frame) {
+    cv::Mat frameImage = TestImageGenerator::generateMovingObjectSequence(frame);
+    FrameMemoryObject frameInput(frameImage);
+
+    auto bgStart = std::chrono::high_resolution_clock::now();
+    FrameMemoryObject bgResult = ProcessingPipeline::processLine(bgPipeline, frameInput, bgConfigs);
+    auto bgEnd = std::chrono::high_resolution_clock::now();
+    auto bgDuration = std::chrono::duration_cast<std::chrono::microseconds>(bgEnd - bgStart);
+    totalBgTime += bgDuration;
+
+    if (frame % 5 == 0) {
+        cv::Mat bgMask = bgResult.getCpuMat();
+        std::string filename = "demo_output/bg_frame_" + std::to_string(frame) + ".jpg";
+        cv::imwrite(filename, bgMask);
+
+        std::string origFilename = "demo_output/bg_orig_" + std::to_string(frame) + ".jpg";
+        cv::imwrite(origFilename, frameImage);
     }
+
+    qDebug() << "  Frame" << frame << "processing time:" << bgDuration.count() << "μs";
+
+    if (frame % 10 == 0) {
+        qDebug() << "  Processed frame" << frame;
+    }
+}
+
+double avgBgTime = totalBgTime.count() / static_cast<double>(frameCount);
+qDebug() << "Total BGS processing time for" << frameCount << "frames:" << totalBgTime.count() << "μs";
+qDebug() << "Average BGS processing time per frame:" << avgBgTime << "μs";
+
     
     // === Test 4: Performance Profiling ===
     qDebug() << "\n=== Test 4: Performance Profiling ===";
     
 #ifdef ENABLE_PROFILING
     // Profile the original pipeline
-    PipelineProfiler::PipelineProfile profile = 
-        PipelineProfiler::profileProcessLine(pipeline, inputFrame, configs);
-    
+    auto profile = PipelineProfiler::profileProcessLine(pipeConfig.steps, inputFrame, pipeConfig.configs);    
     qDebug() << "=== Performance Profile ===";
     profile.print();
 #else
@@ -208,7 +223,7 @@ int main(int argc, char* argv[]) {
     // === Test 5: Memory Location Optimization ===
     qDebug() << "\n=== Test 5: Memory Location Optimization ===";
     
-    MemoryLocation optimalLocation = ProcessingPipeline::determineOptimalMemoryLocation(pipeline);
+    MemoryLocation optimalLocation = ProcessingPipeline::determineOptimalMemoryLocation(pipeConfig.steps);
     qDebug() << "Optimal memory location:" << (optimalLocation == MemoryLocation::CPU ? "CPU" : "GPU");
     
     // Test different memory strategies
@@ -224,16 +239,16 @@ int main(int argc, char* argv[]) {
         testFrame.moveToMemoryLocation(location);
         
         auto locationStart = std::chrono::high_resolution_clock::now();
-        FrameMemoryObject locationResult = ProcessingPipeline::processLine(pipeline, testFrame, configs);
+        FrameMemoryObject locationResult = ProcessingPipeline::processLine(pipeConfig.steps, inputFrame, pipeConfig.configs);
         auto locationEnd = std::chrono::high_resolution_clock::now();
         auto locationDuration = std::chrono::duration_cast<std::chrono::microseconds>(locationEnd - locationStart);
         
         qDebug() << "  Processing time:" << locationDuration.count() << "μs";
         qDebug() << "  Memory usage:" << QString::fromStdString(locationResult.getInfo());
-    }
+    } 
     
     qDebug() << "\n=== Demo Complete ===";
     qDebug() << "Check the 'demo_output' directory for result images";
     
     return 0;
-}
+}   

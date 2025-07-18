@@ -27,19 +27,7 @@ enum class FilterType {
     CUSTOM
 };
 
-// Configuration structure for parameterized filters
-struct FilterConfig {
-    std::map<std::string, double> parameters;
-    
-    void setParameter(const std::string& key, double value) {
-        parameters[key] = value;
-    }
-    
-    double getParameter(const std::string& key, double defaultValue = 0.0) const {
-        auto it = parameters.find(key);
-        return (it != parameters.end()) ? it->second : defaultValue;
-    }
-};
+
 
 // Base interface for processing steps
 class ProcessStep {

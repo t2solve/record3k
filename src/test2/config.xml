@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<opencv_storage>
+<pipeline>
+  <processing_mode>CUDA_PREFERRED</processing_mode>
+  <steps>
+    <_>
+      <name>GaussianBlur_CUDA</name>
+      <enabled>1</enabled>
+      <parameters>
+        <kernel_size>5</kernel_size>
+        <sigma_x>1.0</sigma_x>
+        <sigma_y>1.0</sigma_y>
+      </parameters>
+    </_>
+    <_>
+      <name>BilateralFilter_CUDA</name>
+      <enabled>1</enabled>
+      <parameters>
+        <kernel_size>5</kernel_size>
+        <sigma_color>50.0</sigma_color>
+        <sigma_space>50.0</sigma_space>
+      </parameters>
+    </_>
+    <_>
+      <name>Sharpen_CUDA</name>
+      <enabled>1</enabled>
+      <parameters>
+        <strength>1.5</strength>
+      </parameters>
+    </_>
+    <_>
+      <name>EdgeDetection_CUDA</name>
+      <enabled>1</enabled>
+      <parameters>
+        <threshold1>100.0</threshold1>
+        <threshold2>200.0</threshold2>
+        <aperture_size>3</aperture_size>
+        <L2gradient>0.0</L2gradient>
+      </parameters>
+    </_>
+  </steps>
+</pipeline>
+</opencv_storage>

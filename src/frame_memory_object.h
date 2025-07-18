@@ -6,6 +6,7 @@
 #include "cuda_utils.h"
 #endif
 #include <string>
+#include "filter_config.h"
 
 enum class MemoryLocation {
     CPU,
