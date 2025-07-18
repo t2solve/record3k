@@ -28,6 +28,13 @@ LIBS += -L$${VIMBA_LIB_DIR} -lVmbC -lVmbCPP -Wl,-rpath,\'\$$ORIGIN\'
 QMAKE_POST_LINK += cp $${VIMBA_LIB_DIR}/lib*.so ../bin  # copy vmb-libs to bin
 QMAKE_CXXFLAGS += -Wno-deprecated-enum-enum-conversion # ignore opencv warnings.
 
+# Drogon (adjust the paths if Drogon is installed elsewhere)
+INCLUDEPATH += /usr/local/include
+LIBS += -L/usr/local/lib -ldrogon
+
+# If Drogon depends on other libraries (e.g., pthread, boost, jsoncpp, etc.), add them as well:
+LIBS += -ljsoncpp -lboost_system -lboost_filesystem -lboost_thread -lpthread
+
 
 TARGET = test
 DESTDIR = ../bin
