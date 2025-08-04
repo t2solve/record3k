@@ -52,7 +52,7 @@ cv::cuda::GpuMat FrameMemoryObject::getGpuMat() const {
 }
 #endif
 
-rameMemoryObject FrameMemoryObject::clone() const {
+FrameMemoryObject FrameMemoryObject::clone() const {
     FrameMemoryObject result;
     
     // Clone the image data

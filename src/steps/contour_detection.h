@@ -7,6 +7,10 @@
 #include <opencv2/cudaimgproc.hpp>
 #include "../cuda_utils.h"
 #endif
+#include <numeric>  //  for std::accumulate
+#include <algorithm>  // for std::max_element, std::min_element
+
+
 
 class ContourDetectionCPUStep : public ProcessStep {
 public:

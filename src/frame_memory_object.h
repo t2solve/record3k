@@ -7,6 +7,8 @@
 #endif
 #include <string>
 #include "filter_config.h"
+#include <map>
+#include <any>
 
 enum class MemoryLocation {
     CPU,
@@ -39,6 +41,7 @@ public:
     static bool isCudaAvailable();
 
     // Metadata methods
+    template<typename T>
     void setMetadata(const std::string& key, const T& value);
     
     template<typename T>
@@ -51,10 +54,9 @@ private:
     #ifdef CUDA_ENABLED
     cv::cuda::GpuMat m_gpuMat;
     #endif
-    rivate:
     cv::Mat cpuMat;
     cv::cuda::GpuMat gpuMat;
-    std::map<std::string, std::any> metadata;  // Store additional data
+    std::map<std::string, std::any> m_metadata;  // Store additional data
     
     MemoryLocation m_memoryLocation;
     bool m_hasCpuData;

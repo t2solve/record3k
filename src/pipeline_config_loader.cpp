@@ -100,6 +100,11 @@ FilterType PipelineConfigLoader::stringToFilterType(const std::string& filterNam
     if (filterName == "EdgeDetection_CPU" || filterName == "EdgeDetection_CUDA") return FilterType::EDGE_DETECTION;
     if (filterName == "Denoise_CPU") return FilterType::DENOISE;
     if (filterName == "BackgroundSubtraction_CPU" || filterName == "BackgroundSubtraction_CUDA") return FilterType::BACKGROUND_SUBTRACTION_MOG2;
+    if (filterName == "BackgroundSubtraction_GMG") return FilterType::BACKGROUND_SUBTRACTION_GMG;
+    if (filterName == "BackgroundSubtraction_CNT") return FilterType::BACKGROUND_SUBTRACTION_CNT;
+    if (filterName == "ContourDetection_CPU" || filterName == "ContourDetection_CUDA") return FilterType::CONTOUR_DETECTION;
+    if (filterName == "LensCorrection_CPU" || filterName == "LensCorrection_CUDA") return FilterType::LENS_CORRECTION;
+    if (filterName == "ROICircleCrop_CPU" || filterName == "ROICircleCrop_CUDA") return FilterType::ROI_CIRCLE_CROP;
     return FilterType::NONE;
 }
 
@@ -112,6 +117,11 @@ std::string PipelineConfigLoader::filterTypeToString(FilterType filterType) {
         case FilterType::EDGE_DETECTION: return "EDGE_DETECTION";
         case FilterType::DENOISE: return "DENOISE";
         case FilterType::BACKGROUND_SUBTRACTION_MOG2: return "BACKGROUND_SUBTRACTION_MOG2";
+        case FilterType::BACKGROUND_SUBTRACTION_GMG: return "BACKGROUND_SUBTRACTION_GMG";
+        case FilterType::BACKGROUND_SUBTRACTION_CNT: return "BACKGROUND_SUBTRACTION_CNT";
+        case FilterType::CONTOUR_DETECTION: return "CONTOUR_DETECTION";
+        case FilterType::LENS_CORRECTION: return "LENS_CORRECTION";
+        case FilterType::ROI_CIRCLE_CROP: return "ROI_CIRCLE_CROP";
         default: return "NONE";
     }
 }

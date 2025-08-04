@@ -6,6 +6,9 @@
 #include "steps/sharpen.h"
 #include "steps/denoise.h"
 #include "steps/background_subtraction.h"
+#include "steps/contour_detection.h"
+#include "steps/lens_correction.h"
+#include "steps/roi_circle_crop.h"
 
 std::shared_ptr<ProcessStep> ProcessStepFactory::createGaussianBlur(ProcessingMode mode) {
     switch (mode) {
@@ -88,6 +91,66 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createSharpen(ProcessingMode mo
     }
 }
 
+std::shared_ptr<ProcessStep> ProcessStepFactory::createContourDetection(ProcessingMode mode) {
+    switch (mode) {
+        case ProcessingMode::CPU_ONLY:
+            return std::make_shared<ContourDetectionCPUStep>();
+        case ProcessingMode::CUDA_ONLY:
+#ifdef CUDA_ENABLED
+            return std::make_shared<ContourDetectionCUDAStep>();
+#else
+            return std::make_shared<ContourDetectionCPUStep>();
+#endif
+        case ProcessingMode::CUDA_PREFERRED:
+#ifdef CUDA_ENABLED
+            if (ContourDetectionCUDAStep().isAvailable()) {
+                return std::make_shared<ContourDetectionCUDAStep>();
+            }
+#endif
+            return std::make_shared<ContourDetectionCPUStep>();
+        default:
+            return std::make_shared<ContourDetectionCPUStep>();
+    }
+}
+
+std::shared_ptr<ProcessStep> ProcessStepFactory::createLensCorrection(ProcessingMode mode) {
+    switch (mode) {
+        case ProcessingMode::CPU_ONLY:
+            return std::make_shared<LensCorrectionCPUStep>();
+        case ProcessingMode::CUDA_PREFERRED:
+        case ProcessingMode::CUDA_ONLY:
+#ifdef CUDA_ENABLED
+            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+                return std::make_shared<LensCorrectionCUDAStep>();
+            } else if (mode == ProcessingMode::CUDA_ONLY) {
+                throw std::runtime_error("CUDA not available for lens correction");
+            }
+#endif
+            return std::make_shared<LensCorrectionCPUStep>();
+        default:
+            return std::make_shared<LensCorrectionCPUStep>();
+    }
+}
+
+std::shared_ptr<ProcessStep> ProcessStepFactory::createROICircleCrop(ProcessingMode mode) {
+    switch (mode) {
+        case ProcessingMode::CPU_ONLY:
+            return std::make_shared<ROICircleCropCPUStep>();
+        case ProcessingMode::CUDA_PREFERRED:
+        case ProcessingMode::CUDA_ONLY:
+#ifdef CUDA_ENABLED
+            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+                return std::make_shared<ROICircleCropCUDAStep>();
+            } else if (mode == ProcessingMode::CUDA_ONLY) {
+                throw std::runtime_error("CUDA not available for ROI circle crop");
+            }
+#endif
+            return std::make_shared<ROICircleCropCPUStep>();
+        default:
+            return std::make_shared<ROICircleCropCPUStep>();
+    }
+}
+
 std::shared_ptr<ProcessStep> ProcessStepFactory::createDenoise(ProcessingMode mode) {
     // Denoise is typically CPU-only
     return std::make_shared<DenoiseCPUStep>();
@@ -140,6 +203,12 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createStep(FilterType filterTyp
             return createBackgroundSubtractionGMG(mode);
         case FilterType::BACKGROUND_SUBTRACTION_CNT:
             return createBackgroundSubtractionCNT(mode);
+        case FilterType::CONTOUR_DETECTION:
+            return createContourDetection(mode);
+        case FilterType::LENS_CORRECTION:
+            return createLensCorrection(mode);
+        case FilterType::ROI_CIRCLE_CROP:
+            return createROICircleCrop(mode);
         case FilterType::NONE:
         case FilterType::CUSTOM:
         default:

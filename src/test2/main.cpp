@@ -136,14 +136,14 @@ int main(int argc, char* argv[]) {
         qDebug() << "No contour metadata found";
     }
     
-    // Check for edge detection metadata
-    if (result.hasMetadata("edge_pixel_count")) {
-        int edgePixels = result.getMetadata<int>("edge_pixel_count");
-        double edgeDensity = result.getMetadata<double>("edge_density");
-        qDebug() << "Edge detection results:";
-        qDebug() << "  Edge pixels:" << edgePixels;
-        qDebug() << "  Edge density:" << edgeDensity;
-    }
+    // // Check for edge detection metadata
+    // if (result.hasMetadata("edge_pixel_count")) {
+    //     int edgePixels = result.getMetadata<int>("edge_pixel_count");
+    //     double edgeDensity = result.getMetadata<double>("edge_density");
+    //     qDebug() << "Edge detection results:";
+    //     qDebug() << "  Edge pixels:" << edgePixels;
+    //     qDebug() << "  Edge density:" << edgeDensity;
+    // }
     
     // === Test 2: Individual Step Processing ===
     qDebug() << "\n=== Test 2: Individual Step Processing ===";
