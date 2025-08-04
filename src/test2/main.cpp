@@ -177,8 +177,8 @@ int main(int argc, char* argv[]) {
     std::chrono::microseconds totalBgTime(0);
     int frameCount = 60;
 
-for (int frame = 0; frame < frameCount; ++frame) {
-    cv::Mat frameImage = TestImageGenerator::generateMovingObjectSequence(frame);
+    for (int frame = 0; frame < frameCount; ++frame) {
+        cv::Mat frameImage = TestImageGenerator::generateMovingObjectSequence(frame);
     FrameMemoryObject frameInput(frameImage);
 
     auto bgStart = std::chrono::high_resolution_clock::now();
@@ -201,7 +201,7 @@ for (int frame = 0; frame < frameCount; ++frame) {
     if (frame % 10 == 0) {
         qDebug() << "  Processed frame" << frame;
     }
-}
+    }
 
 double avgBgTime = totalBgTime.count() / static_cast<double>(frameCount);
 qDebug() << "Total BGS processing time for" << frameCount << "frames:" << totalBgTime.count() << "μs";
