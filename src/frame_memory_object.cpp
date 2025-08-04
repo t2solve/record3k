@@ -52,18 +52,28 @@ cv::cuda::GpuMat FrameMemoryObject::getGpuMat() const {
 }
 #endif
 
-FrameMemoryObject FrameMemoryObject::clone() const {
-    if (m_memoryLocation == MemoryLocation::CPU) {
-        return FrameMemoryObject(m_cpuMat.clone());
+rameMemoryObject FrameMemoryObject::clone() const {
+    FrameMemoryObject result;
+    
+    // Clone the image data
+    if (m_hasCpuData) {
+        result.m_cpuMat = m_cpuMat.clone();
+        result.m_hasCpuData = true;
     }
-#ifdef CUDA_ENABLED
-    else {
-        cv::cuda::GpuMat clonedGpu;
-        m_gpuMat.copyTo(clonedGpu);
-        return FrameMemoryObject(clonedGpu);
+    
+    #ifdef CUDA_ENABLED
+    if (m_hasGpuData) {
+        m_gpuMat.copyTo(result.m_gpuMat);
+        result.m_hasGpuData = true;
     }
-#endif
-    return FrameMemoryObject();
+    #endif
+    
+    result.m_memoryLocation = m_memoryLocation;
+    
+    // Clone metadata
+    result.m_metadata = m_metadata;
+    
+    return result;
 }
 
 MemoryLocation FrameMemoryObject::getMemoryLocation() const {
@@ -139,4 +149,8 @@ void FrameMemoryObject::release() {
 #endif
     m_hasCpuData = false;
     m_hasGpuData = false;
+}
+
+bool FrameMemoryObject::hasMetadata(const std::string& key) const {
+    return m_metadata.find(key) != m_metadata.end();
 }

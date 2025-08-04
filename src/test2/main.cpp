@@ -102,6 +102,48 @@ int main(int argc, char* argv[]) {
     cv::Mat resultImage = result.getCpuMat();
     cv::imwrite("demo_output/01_processed.jpg", resultImage);
     qDebug() << "Saved processed image";
+
+     // === Check for contour metadata ===
+    qDebug() << "\n=== Contour Detection Results ===";
+    if (result.hasMetadata("contour_count")) {
+        int contourCount = result.getMetadata<int>("contour_count");
+        qDebug() << "Found contours:" << contourCount;
+        
+        if (contourCount > 0) {
+            auto contours = result.getMetadata<std::vector<std::vector<cv::Point>>>("contours");
+            auto areas = result.getMetadata<std::vector<double>>("contour_areas");
+            auto perimeters = result.getMetadata<std::vector<double>>("contour_perimeters");
+            
+            qDebug() << "Contour statistics:";
+            for (int i = 0; i < std::min(contourCount, 10); ++i) { // Show first 10
+                qDebug() << "  Contour" << i << ": Area =" << areas[i] << ", Perimeter =" << perimeters[i];
+            }
+            
+            if (result.hasMetadata("total_contour_area")) {
+                double totalArea = result.getMetadata<double>("total_contour_area");
+                double meanArea = result.getMetadata<double>("mean_contour_area");
+                double maxArea = result.getMetadata<double>("max_contour_area");
+                double minArea = result.getMetadata<double>("min_contour_area");
+                
+                qDebug() << "Area statistics:";
+                qDebug() << "  Total area:" << totalArea;
+                qDebug() << "  Mean area:" << meanArea;
+                qDebug() << "  Max area:" << maxArea;
+                qDebug() << "  Min area:" << minArea;
+            }
+        }
+    } else {
+        qDebug() << "No contour metadata found";
+    }
+    
+    // Check for edge detection metadata
+    if (result.hasMetadata("edge_pixel_count")) {
+        int edgePixels = result.getMetadata<int>("edge_pixel_count");
+        double edgeDensity = result.getMetadata<double>("edge_density");
+        qDebug() << "Edge detection results:";
+        qDebug() << "  Edge pixels:" << edgePixels;
+        qDebug() << "  Edge density:" << edgeDensity;
+    }
     
     // === Test 2: Individual Step Processing ===
     qDebug() << "\n=== Test 2: Individual Step Processing ===";

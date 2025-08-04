@@ -38,11 +38,24 @@ public:
     int channels() const;
     static bool isCudaAvailable();
 
+    // Metadata methods
+    void setMetadata(const std::string& key, const T& value);
+    
+    template<typename T>
+    T getMetadata(const std::string& key) const;
+    
+    bool hasMetadata(const std::string& key) const;
+
 private:
     cv::Mat m_cpuMat;
     #ifdef CUDA_ENABLED
     cv::cuda::GpuMat m_gpuMat;
     #endif
+    rivate:
+    cv::Mat cpuMat;
+    cv::cuda::GpuMat gpuMat;
+    std::map<std::string, std::any> metadata;  // Store additional data
+    
     MemoryLocation m_memoryLocation;
     bool m_hasCpuData;
     bool m_hasGpuData;
@@ -52,3 +65,18 @@ private:
     void release();
     
 };
+
+// Template implementations (must be in header for templates)
+template<typename T>
+void FrameMemoryObject::setMetadata(const std::string& key, const T& value) {
+    m_metadata[key] = value;
+}
+
+template<typename T>
+T FrameMemoryObject::getMetadata(const std::string& key) const {
+    auto it = m_metadata.find(key);
+    if (it != m_metadata.end()) {
+        return std::any_cast<T>(it->second);
+    }
+    throw std::runtime_error("Metadata key not found: " + key);
+}

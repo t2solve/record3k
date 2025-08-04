@@ -22,7 +22,17 @@ FrameMemoryObject EdgeDetectionCPUStep::process(const FrameMemoryObject& input, 
     
     cv::Canny(gray, result, threshold1, threshold2, apertureSize, L2gradient);
     
-    return FrameMemoryObject(result);
+    // Create result with output metadata only
+    FrameMemoryObject frameResult(result);
+    
+    // Edge detection output statistics - useful for contour detection
+    int edgePixelCount = cv::countNonZero(result);
+    double edgeDensity = static_cast<double>(edgePixelCount) / (result.rows * result.cols);
+    
+    frameResult.setMetadata<int>("edge_pixel_count", edgePixelCount);
+    frameResult.setMetadata<double>("edge_density", edgeDensity);
+    
+    return frameResult;
 }
 
 #ifdef CUDA_ENABLED
@@ -54,6 +64,20 @@ FrameMemoryObject EdgeDetectionCUDAStep::process(const FrameMemoryObject& input,
     threshold1, threshold2, apertureSize, L2gradient);
     detector->detect(gray, resultGpu);
 
-    return FrameMemoryObject(resultGpu);
+    // Create result with output metadata only
+    FrameMemoryObject frameResult(resultGpu);
+    
+    // Calculate edge statistics on GPU/CPU
+    cv::cuda::GpuMat nonZeroCoords;
+    cv::cuda::findNonZero(resultGpu, nonZeroCoords);
+    
+    int edgePixelCount = nonZeroCoords.rows;
+    double edgeDensity = static_cast<double>(edgePixelCount) / (resultGpu.rows * resultGpu.cols);
+    
+    frameResult.setMetadata<int>("edge_pixel_count", edgePixelCount);
+    frameResult.setMetadata<double>("edge_density", edgeDensity);
+    
+    return frameResult;
 }
+
 #endif
