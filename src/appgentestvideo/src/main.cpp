@@ -8,7 +8,7 @@
 #include <vector>
 #include <memory>
 
-#include "test_image_generator.h"
+#include "test_video_generator.cpp"
 
 
 int main(int argc, char *argv[]) {
@@ -50,7 +50,8 @@ int main(int argc, char *argv[]) {
         QDir dir(QString::fromStdString(outputDir));
         QStringList files = dir.entryList(QStringList() << "frame_*.jpg", QDir::Files);
         qDebug() << "\nFirst 5 generated files:";
-        for (int i = 0; i < std::min(5, files.size()); ++i) {
+        int fileSize = (int) files.size();
+        for (int i = 0; i < std::min<int>(5, fileSize); ++i) {
             qDebug() << "-" << files[i];
         }
         

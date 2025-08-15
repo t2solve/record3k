@@ -3,6 +3,7 @@
 #include <QDir>
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgcodecs.hpp>
+#include <thread>
 #include <chrono>
 #include <vector>
 #include <memory>
@@ -53,38 +54,7 @@ public:
 
         return image;
     }
-        
-    static cv::Mat generateMovingObjectSequence(int frameNumber, int width = 640, int height = 480) {
-        // Create base image
-        cv::Mat image = cv::Mat::zeros(height, width, CV_8UC3);
-        
-        // Create a simple background
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int intensity = static_cast<int>(50 + 30 * sin(x * 0.01) * cos(y * 0.01));
-                image.at<cv::Vec3b>(y, x) = cv::Vec3b(intensity, intensity, intensity);
-            }
-        }
-        
-        // Add moving objects
-        int objectX = (frameNumber * 10) % width;
-        int objectY = height / 2 + static_cast<int>(50 * sin(frameNumber * 0.1));
-        
-        // Moving circle
-        cv::circle(image, cv::Point(objectX, objectY), 30, cv::Scalar(0, 255, 0), -1);
-        
-        // Moving rectangle
-        int rectX = ((frameNumber * 8) + 200) % width;
-        int rectY = height / 3;
-        cv::rectangle(image, cv::Rect(rectX, rectY, 40, 60), cv::Scalar(255, 0, 0), -1);
-        
-        // Add some noise - FIX: Initialize noise matrix first
-        cv::Mat noise(image.size(), image.type());
-        cv::randu(noise, cv::Scalar::all(0), cv::Scalar::all(10));
-        image += noise;
-        
-        return image;
-    }
+
     static bool generateTestSequence(int numFrames, double fps, const std::string& outputDir = "/tmp/test_frames") {
         // Create output directory if it doesn't exist
         QDir dir(QString::fromStdString(outputDir));

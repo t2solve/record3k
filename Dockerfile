@@ -18,8 +18,8 @@ COPY . .
 #RUN apt-get update && apt-get install -y gdb
 
 #build test 
-RUN cd /app/obj && qmake6 recorder-test2.pro
-RUN cd /app/obj && make -j 6
+RUN cd /app/ && qmake6 testrecord3k.pro
+RUN cd /app/ && make -j 6
 
 # install the Vimba SDK drivers 
 RUN /app/vimbax/cti/Install_GenTL_Path.sh
