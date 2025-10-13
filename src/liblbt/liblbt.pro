@@ -8,5 +8,7 @@ include(../../obj/common.pri)
 # For shared library
 CONFIG += shared
 
+DESTDIR = ../../lib
+
 # Or for static library
 # CONFIG += static

@@ -11,6 +11,9 @@ ENV TZ=Etc/UTC
 # Set the working directory
 WORKDIR /app
 
+# Create necessary directories
+RUN mkdir -p /app/bin /app/lib
+
 # copy is not working copy from local
 COPY . .
 
