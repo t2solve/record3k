@@ -7,11 +7,11 @@
 #include <vector>
 #include <memory>
 
-#include "../process_step_factory.h"
-#include "../processing_pipeline.h"
-#include "../frame_memory_object.h"
-#include "../pipeline_profiler.h"
-#include "../pipeline_config_loader.h"
+#include <liblbt/process_step_factory.h>
+#include <liblbt/processing_pipeline.h>
+#include <liblbt/frame_memory_object.h>
+#include <liblbt/pipeline_profiler.h>
+#include <liblbt/pipeline_config_loader.h>
 
 #include "test_image_generator.cpp"
 

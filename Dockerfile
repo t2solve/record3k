@@ -17,6 +17,8 @@ RUN mkdir -p /app/bin /app/lib
 # copy is not working copy from local
 COPY . .
 
+RUN ls -al /app/src/liblbt/include/liblbt || (echo "liblbt headers missing in image" && exit 1)
+
 # ONLY for debug 
 #RUN apt-get update && apt-get install -y gdb
 
