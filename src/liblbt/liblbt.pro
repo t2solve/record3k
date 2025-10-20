@@ -1,4 +1,4 @@
-TARGET = liblbt
+TARGET = lbt
 VERSION = 0.0.2
 TEMPLATE = lib
 
@@ -11,7 +11,17 @@ CONFIG += shared
 DESTDIR = ../../lib
 
 # Public headers exported by the library
-INCLUDEPATH += $$PWD/include
+INCLUDEPATH += $$PWD/include \
+               $$PWD/include/liblbt \
+               $$PWD/include/liblbt/steps \
+               $$PWD/src \
+               $$PWD/src/steps
+
+SOURCES += \
+    $$files($$PWD/src/*.cpp) \
+    $$files($$PWD/src/steps/*.cpp)
+
+
 HEADERS += \
     include/liblbt/process_step_factory.h \
     include/liblbt/processing_pipeline.h \

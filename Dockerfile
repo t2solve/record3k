@@ -17,7 +17,16 @@ RUN mkdir -p /app/bin /app/lib
 # copy is not working copy from local
 COPY . .
 
-RUN ls -al /app/src/liblbt/include/liblbt || (echo "liblbt headers missing in image" && exit 1)
+# ensure public include prefix exists; move flat headers if present
+RUN if [ ! -d /app/src/liblbt/include/liblbt ]; then \
+      mkdir -p /app/src/liblbt/include/liblbt; \
+      for f in /app/src/liblbt/include/*.h; do \
+        [ -e "$f" ] && mv "$f" /app/src/liblbt/include/liblbt/; \
+      done; \
+    fi
+
+# sanity check
+RUN ls -al /app/src/liblbt/include/liblbt
 
 # ONLY for debug 
 #RUN apt-get update && apt-get install -y gdb
