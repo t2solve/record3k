@@ -37,13 +37,13 @@ public:
         const FrameMemoryObject& input,
         const std::vector<FilterConfig>& configs);
     
-    /**
-     * @brief Execute with a single config applied to all steps
-     */
-    static FrameMemoryObject processLine(
-        const std::vector<std::shared_ptr<ProcessStep>>& steps,
-        const FrameMemoryObject& input,
-        const FilterConfig& config);
+    // /**
+    //  * @brief Execute with a single config applied to all steps
+    //  */
+    // static FrameMemoryObject processLine(
+    //     const std::vector<std::shared_ptr<ProcessStep>>& steps,
+    //     const FrameMemoryObject& input,
+    //     const FilterConfig& config);
     
     /**
      * @brief Analyze the pipeline to determine optimal memory strategy

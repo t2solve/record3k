@@ -245,9 +245,9 @@ int main(int argc, char* argv[]) {
     }
     }
 
-double avgBgTime = totalBgTime.count() / static_cast<double>(frameCount);
-qDebug() << "Total BGS processing time for" << frameCount << "frames:" << totalBgTime.count() << "μs";
-qDebug() << "Average BGS processing time per frame:" << avgBgTime << "μs";
+    double avgBgTime = totalBgTime.count() / static_cast<double>(frameCount);
+    qDebug() << "Total BGS processing time for" << frameCount << "frames:" << totalBgTime.count() << "μs";
+    qDebug() << "Average BGS processing time per frame:" << avgBgTime << "μs";
 
     
     // === Test 4: Performance Profiling ===
