@@ -1,6 +1,10 @@
 # BUILD: docker build --network=host -t recorder-3k .
-# LOGIN: docker run  docker run --gpus all  --network=host  recorder-3k --network=host  -it --name recorder-3k recorder-3k bash
+# LOGIN: docker run  docker run --gpus all  --network=host  recorder-3k -it --name recorder-3k recorder-3k bash
 # RUN: docker run  --gpus all  --network=host  recorder-3k
+# podman run --rm -it --name recorder-3k \
+#  --network=host -v "$PWD":/app -w /app \
+# needed: export LD_LIBRARY_PATH=/app/bin:$LD_LIBRARY_PATH
+#  recorder-3k bash   # or sh
 # copy out data: docker cp dreamy_grothendieck:/app/out  .
 FROM cuda-builder:latest 
 
