@@ -1,5 +1,5 @@
 #pragma once
-#include "frame_memory_object.h"
+#include <liblbt/frame_memory_object.h>
 
 class IFrameSource {
 public:

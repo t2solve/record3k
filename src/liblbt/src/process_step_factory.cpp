@@ -9,6 +9,8 @@
 #include "steps/contour_detection.h"
 #include "steps/lens_correction.h"
 #include "steps/roi_circle_crop.h"
+#include "steps/contour_area_filter.h"
+#include "steps/binary_threshold.h"
 
 std::shared_ptr<ProcessStep> ProcessStepFactory::createGaussianBlur(ProcessingMode mode) {
     switch (mode) {
@@ -183,6 +185,44 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createBackgroundSubtractionCNT(
     return std::make_shared<BackgroundSubtractionCPUStep>();
 }
 
+std::shared_ptr<ProcessStep> ProcessStepFactory::createContourAreaFilter(ProcessingMode mode) {
+    switch (mode) {
+        case ProcessingMode::CPU_ONLY:
+            return std::make_shared<ContourAreaFilterCPUStep>();
+        case ProcessingMode::CUDA_PREFERRED:
+        case ProcessingMode::CUDA_ONLY:
+#ifdef CUDA_ENABLED
+            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+                return std::make_shared<ContourAreaFilterCUDAStep>();
+            } else if (mode == ProcessingMode::CUDA_ONLY) {
+                throw std::runtime_error("CUDA not available for contour area filter");
+            }
+#endif
+            return std::make_shared<ContourAreaFilterCPUStep>();
+        default:
+            return std::make_shared<ContourAreaFilterCPUStep>();
+    }
+}
+
+std::shared_ptr<ProcessStep> ProcessStepFactory::createBinaryThreshold(ProcessingMode mode) {
+    switch (mode) {
+        case ProcessingMode::CPU_ONLY:
+            return std::make_shared<BinaryThresholdCPUStep>();
+        case ProcessingMode::CUDA_PREFERRED:
+        case ProcessingMode::CUDA_ONLY:
+#ifdef CUDA_ENABLED
+            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+                return std::make_shared<BinaryThresholdCUDAStep>();
+            } else if (mode == ProcessingMode::CUDA_ONLY) {
+                throw std::runtime_error("CUDA not available for binary threshold");
+            }
+#endif
+            return std::make_shared<BinaryThresholdCPUStep>();
+        default:
+            return std::make_shared<BinaryThresholdCPUStep>();
+    }
+}
+
 std::shared_ptr<ProcessStep> ProcessStepFactory::createStep(FilterType filterType, ProcessingMode mode) {
     switch (filterType) {
         case FilterType::GAUSSIAN_BLUR:
@@ -209,6 +249,10 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createStep(FilterType filterTyp
             return createLensCorrection(mode);
         case FilterType::ROI_CIRCLE_CROP:
             return createROICircleCrop(mode);
+        case FilterType::CONTOUR_AREA_FILTER:
+            return createContourAreaFilter(mode);
+        case FilterType::BINARY_THRESHOLD:
+            return createBinaryThreshold(mode);
         case FilterType::NONE:
         case FilterType::CUSTOM:
         default:
