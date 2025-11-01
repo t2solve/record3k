@@ -10,11 +10,19 @@
 #include <QTimer>
 #include <QDebug>
 #include <QObject>
-
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/opencv.hpp>
 
+#include <thread>
+
+#include <liblbt/process_step_factory.h>
+#include <liblbt/processing_pipeline.h>
+#include <liblbt/frame_memory_object.h>
+#include <liblbt/pipeline_profiler.h>
+#include <liblbt/pipeline_config_loader.h>
+
+#include "disk_image_frame_source.h"
 
 std::vector<std::tuple<std::string, std::string>> ListCameraSerialAndInterface()
 {
@@ -46,23 +54,31 @@ std::vector<std::tuple<std::string, std::string>> ListCameraSerialAndInterface()
 
 
 
-int main()
+int main(int argc, char* argv[])
 {
-
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <image_directory>" << std::endl;
+        return 1;
+    }
+   std::string image_dir = argv[1];
    //Configure processing pipeline
    auto pipeConfig = PipelineConfigLoader::loadFromXML("config.xml");
-    ProcessingMode mode = pipeConfig.mode;
+   //ProcessingMode mode = pipeConfig.mode;
       // Process the image
    qDebug() << "Processing pipeline with" << pipeConfig.steps.size() << "steps...";
 
-   std::unique_ptr<IFrameSource> source = std::make_unique<DiskImageFrameSource>("/path/to/images", "*.jpg");
+   std::unique_ptr<IFrameSource> source = std::make_unique<DiskImageFrameSource>(image_dir, "*.jpg");
    // Set desired frequency (Hz)
    double frequency = 10.0; // 10 frames per second
    auto interval = std::chrono::milliseconds(static_cast<int>(1000.0 / frequency));
 
+    auto start_time = std::chrono::steady_clock::now();
+    auto last_time = start_time;
+    double avg_fps = 0.0;
+    const double alpha = 0.1;
 
-   while (source->hasMore()) 
-   {
+    while (std::chrono::steady_clock::now() - start_time < std::chrono::minutes(1)) 
+    {
          auto frame = source->nextFrame();
          auto now = std::chrono::steady_clock::now();
          double dt = std::chrono::duration<double>(now - last_time).count(); // seconds
@@ -73,7 +89,7 @@ int main()
          avg_fps = (1.0 - alpha) * avg_fps + alpha * fps;
 
          if (frame) {
-            FrameMemoryObject result = ProcessingPipeline::processLine(pipeConfig.steps, frame, pipeConfig.configs);
+            FrameMemoryObject result = ProcessingPipeline::processLine(pipeConfig.steps, *frame, pipeConfig.configs);
          }
 
          // Optionally print or log the moving average FPS

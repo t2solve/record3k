@@ -2,7 +2,7 @@ include(../../obj/common.pri)
 
 
 TEMPLATE = app
-TARGET = test
+TARGET = test2
 DESTDIR = ../../bin
 
 # Use liblbt headers and link to the built .so

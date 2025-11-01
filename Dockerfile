@@ -1,6 +1,8 @@
 # BUILD: docker build --network=host -t recorder-3k .
 # LOGIN: docker run  docker run --gpus all  --network=host  recorder-3k -it --name recorder-3k recorder-3k bash
 # RUN: docker run  --gpus all  --network=host  recorder-3k
+
+# podman run --rm -it --name recorder-3k --gpus all --network=host recorder-3k bash
 # podman run --rm -it --name recorder-3k \
 #  --network=host -v "$PWD":/app -w /app \
 # needed: export LD_LIBRARY_PATH=/app/bin:$LD_LIBRARY_PATH
@@ -55,4 +57,4 @@ RUN export CWD="/app/vimbax/cti" && \
 ENV GENICAM_GENTL64_PATH=:/app/vimbax/cti
 
 # Run the application
-CMD ["/app/bin/test2"] 
+# CMD ["/app/bin/test2"] 

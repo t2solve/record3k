@@ -10,7 +10,9 @@ INCLUDEPATH += $$PWD/../liblbt/include
 LIBS += -L$$PWD/../../lib -llbt -Wl,-rpath,\'\$$ORIGIN/../lib\'
 
 SOURCES += \
-    src/main.cpp \
+    main.cpp \
+    disk_image_frame_source.cpp \
 
-#HEADERS += \
-#    include/mainwindow.h
+HEADERS += \
+    iframe_source.h \
+    disk_image_frame_source.h
