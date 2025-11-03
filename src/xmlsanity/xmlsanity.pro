@@ -2,17 +2,18 @@ include(../../obj/common.pri)
 
 
 TEMPLATE = app
-TARGET = test2
+TARGET = xmlsanity
+CONFIG += console
+CONFIG -= app_bundle
+CONFIG -= qt
+
 DESTDIR = ../../bin
 
 # Use liblbt headers and link to the built .so
 INCLUDEPATH += $$PWD/../liblbt/include
-# Link path for in-tree run (source) and out-of-source build products
 LIBS += -L$$OUT_PWD/../../lib -L$$PWD/../../lib -llbt -Wl,-rpath,\'\$$ORIGIN/../lib\'
 
-SOURCES += \
-    src/main.cpp \
-    src/test_image_generator.cpp
 
-#HEADERS += \
-#    include/mainwindow.h
+SOURCES += \
+    main.cpp
+

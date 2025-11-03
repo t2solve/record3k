@@ -10,9 +10,7 @@ FrameMemoryObject ContourAreaFilterCPUStep::process(const FrameMemoryObject& inp
     // Get config parameters
     double minArea = config.getParameter("min_area", 150.0);
     double maxArea = config.getParameter("max_area", 300000.0);
-    // bool drawContours = config.getParameter("draw_contours", 0.0) > 0.5;
-    // bool drawCenters = config.getParameter("draw_centers", 0.0) > 0.5;
-    // bool drawRectangles = config.getParameter("draw_rectangles", 0.0) > 0.5;
+    bool debug = config.getParameter("debug", 0.0) > 0.5; // when true, draw overlays
     
     // Find all contours
     std::vector<std::vector<cv::Point>> contours;
@@ -21,6 +19,7 @@ FrameMemoryObject ContourAreaFilterCPUStep::process(const FrameMemoryObject& inp
                      cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
     
     int originalCount = contours.size();
+
     
     // Filter contours by area
     std::vector<std::vector<cv::Point>> filteredContours;
@@ -37,44 +36,47 @@ FrameMemoryObject ContourAreaFilterCPUStep::process(const FrameMemoryObject& inp
             centers.push_back(rect.center);
         }
     }
+    //we do need a test here if no courts are left after filtering?
+    if (filteredContours.empty() ) {
+        std::cerr << "[ContourAreaFilterCPUStep] Warning: No contours left after filtering with min_area=" 
+                  << minArea << " and max_area=" << maxArea << ".\n";
+        if (originalCount > 0) {
+            std::cerr << "  Original contour count was " << originalCount << ".\n";
+            //we iterate the original contours and print their areas
+            for (size_t i = 0; i < contours.size(); ++i) {
+                double area = cv::contourArea(contours[i]);
+                std::cerr << "    Contour " << i << " area: " << area << "\n";
+            }   
+        }
+    }
     
-    // // Create output image
-    // cv::Mat result;
-    // if (drawContours || drawCenters || drawRectangles) {
-    //     // Convert to color for visualization
-    //     if (inputMat.channels() == 1) {
-    //         cv::cvtColor(inputMat, result, cv::COLOR_GRAY2BGR);
-    //     } else {
-    //         result = inputMat.clone();
-    //     }
-        
-    //     // Draw filtered contours
-    //     if (drawContours) {
-    //         cv::Scalar color(0, 255, 0); // Green
-    //         cv::drawContours(result, filteredContours, -1, color, 2);
-    //     }
-        
-    //     // Draw min area rectangles
-    //     if (drawRectangles) {
-    //         for (const auto& rect : minRects) {
-    //             cv::Point2f vertices[4];
-    //             rect.points(vertices);
-    //             for (int i = 0; i < 4; i++) {
-    //                 cv::line(result, vertices[i], vertices[(i+1)%4], cv::Scalar(255, 0, 0), 2);
-    //             }
-    //         }
-    //     }
-        
-    //     // Draw centers
-    //     if (drawCenters) {
-    //         for (const auto& center : centers) {
-    //             cv::circle(result, center, 5, cv::Scalar(0, 0, 255), -1);
-    //         }
-    //     }
-    // } else {
-    //     result = inputMat.clone();
-    // }
-    cv::Mat result = inputMat.clone();
+    
+    // Create output image with optional debug visualization
+    cv::Mat result;
+    if (debug) {
+        // Convert to color for visualization
+        if (inputMat.channels() == 1) {
+            cv::cvtColor(inputMat, result, cv::COLOR_GRAY2BGR);
+        } else {
+            result = inputMat.clone();
+        }
+        // Draw filtered contours (green)
+        cv::drawContours(result, filteredContours, -1, cv::Scalar(0, 255, 0), 2);
+        // Draw min area rectangles (blue)
+        for (const auto& rect : minRects) {
+            cv::Point2f vertices[4];
+            rect.points(vertices);
+            for (int i = 0; i < 4; i++) {
+                cv::line(result, vertices[i], vertices[(i+1)%4], cv::Scalar(255, 0, 0), 2);
+            }
+        }
+        // Draw centers (blue)
+        for (const auto& c : centers) {
+            cv::circle(result, c, 5, cv::Scalar(255, 0, 0), -1);
+        }
+    } else {
+        result = inputMat.clone();
+    }
     
     FrameMemoryObject frameResult(result);
     
@@ -105,11 +107,9 @@ FrameMemoryObject ContourAreaFilterCUDAStep::process(const FrameMemoryObject& in
     cv::Mat cpuMat = input.getCpuMat();
     
     // Get config parameters
-    double minArea = config.getParameter("min_area", 150.0);
+    double minArea = config.getParameter("min_area", 80.0);
     double maxArea = config.getParameter("max_area", 300000.0);
-    // bool drawContours = config.getParameter("draw_contours", 0.0) > 0.5;
-    // bool drawCenters = config.getParameter("draw_centers", 0.0) > 0.5;
-    // bool drawRectangles = config.getParameter("draw_rectangles", 0.0) > 0.5;
+    bool debug = config.getParameter("debug", 0.0) > 0.5; // when true, draw overlays
     
     // Find all contours (on CPU)
     std::vector<std::vector<cv::Point>> contours;
@@ -118,7 +118,6 @@ FrameMemoryObject ContourAreaFilterCUDAStep::process(const FrameMemoryObject& in
                      cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
     
     int originalCount = contours.size();
-    
     // Filter contours by area
     std::vector<std::vector<cv::Point>> filteredContours;
     std::vector<cv::RotatedRect> minRects;
@@ -134,48 +133,48 @@ FrameMemoryObject ContourAreaFilterCUDAStep::process(const FrameMemoryObject& in
             centers.push_back(rect.center);
         }
     }
+    //we do need a test here if no courts are left after filtering?
+    if (filteredContours.empty() ) {
+        std::cerr << "[ContourAreaFilterCPUStep] Warning: No contours left after filtering with min_area=" 
+                  << minArea << " and max_area=" << maxArea << ".\n";
+        if (originalCount > 0) {
+            std::cerr << "  Original contour count was " << originalCount << ".\n";    
+            //we iterte the original contours and print their areas
+            for (size_t i = 0; i < contours.size(); ++i) {
+                double area = cv::contourArea(contours[i]);
+                std::cerr << "    Contour " << i << " area: " << area << "\n";
+            }   
+        }
+    }
+
     
-    // // Create output image on GPU
-    // cv::cuda::GpuMat resultGpu;
-    // if (drawContours || drawCenters || drawRectangles) {
-    //     // Convert to color for visualization (on CPU, then upload)
-    //     cv::Mat result;
-    //     if (cpuMat.channels() == 1) {
-    //         cv::cvtColor(cpuMat, result, cv::COLOR_GRAY2BGR);
-    //     } else {
-    //         result = cpuMat.clone();
-    //     }
-        
-    //     // Draw filtered contours
-    //     if (drawContours) {
-    //         cv::Scalar color(0, 255, 0);
-    //         cv::drawContours(result, filteredContours, -1, color, 2);
-    //     }
-        
-    //     // Draw min area rectangles
-    //     if (drawRectangles) {
-    //         for (const auto& rect : minRects) {
-    //             cv::Point2f vertices[4];
-    //             rect.points(vertices);
-    //             for (int i = 0; i < 4; i++) {
-    //                 cv::line(result, vertices[i], vertices[(i+1)%4], cv::Scalar(255, 0, 0), 2);
-    //             }
-    //         }
-    //     }
-        
-    //     // Draw centers
-    //     if (drawCenters) {
-    //         for (const auto& center : centers) {
-    //             cv::circle(result, center, 5, cv::Scalar(0, 0, 255), -1);
-    //         }
-    //     }
-        
-    //     resultGpu.upload(result);
-    // } else {
-    //     resultGpu = input.getGpuMat();
-    // }
-    cv::cuda::GpuMat resultGpu = input.getGpuMat();
-    resultGpu.upload(result);
+    // Create output image on GPU; debug drawing done on CPU then uploaded
+    cv::cuda::GpuMat resultGpu;
+    if (debug) {
+        cv::Mat result;
+        if (cpuMat.channels() == 1) {
+            cv::cvtColor(cpuMat, result, cv::COLOR_GRAY2BGR);
+        } else {
+            result = cpuMat.clone();
+        }
+        // Draw filtered contours (green)
+        cv::drawContours(result, filteredContours, -1, cv::Scalar(0, 255, 0), 2);
+        // Draw min area rectangles (blue)
+        for (const auto& rect : minRects) {
+            cv::Point2f vertices[4];
+            rect.points(vertices);
+            for (int i = 0; i < 4; i++) {
+                cv::line(result, vertices[i], vertices[(i+1)%4], cv::Scalar(255, 0, 0), 2);
+            }
+        }
+        // Draw centers (blue)
+        for (const auto& c : centers) {
+            cv::circle(result, c, 5, cv::Scalar(255, 0, 0), -1);
+        }
+        resultGpu.upload(result);
+    } else {
+        resultGpu = input.getGpuMat();
+    }
 
     FrameMemoryObject frameResult(resultGpu);
     

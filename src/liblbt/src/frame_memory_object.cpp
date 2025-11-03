@@ -1,17 +1,33 @@
 #include "frame_memory_object.h"
 #include <stdexcept>
+#include <chrono>
+
+
+// Timestamp accessors
+void FrameMemoryObject::setTimestampNs(uint64_t tsNs) noexcept { m_timestampNs = tsNs; }
+uint64_t FrameMemoryObject::timestampNs() const noexcept { return m_timestampNs; }
+bool FrameMemoryObject::hasTimestamp() const noexcept { return m_timestampNs != 0ULL; }
+#ifdef VIMBAX_ENABLED
+void FrameMemoryObject::setTimestampFromVimba(uint64_t tsNs) noexcept { m_timestampNs = tsNs; }
+#endif
+
+void FrameMemoryObject::touchTimestampNow() noexcept {
+    using namespace std::chrono;
+    const auto now = steady_clock::now().time_since_epoch();
+    m_timestampNs = static_cast<uint64_t>(duration_cast<nanoseconds>(now).count());
+}
 
 FrameMemoryObject::FrameMemoryObject() 
-    : m_memoryLocation(MemoryLocation::CPU), m_hasCpuData(false), m_hasGpuData(false) {
+    : m_memoryLocation(MemoryLocation::CPU), m_hasCpuData(false), m_hasGpuData(false), m_timestampNs(0) {
 }
 
 FrameMemoryObject::FrameMemoryObject(const cv::Mat& mat) 
-    : m_cpuMat(mat), m_memoryLocation(MemoryLocation::CPU), m_hasCpuData(true), m_hasGpuData(false) {
+    : m_cpuMat(mat), m_memoryLocation(MemoryLocation::CPU), m_hasCpuData(true), m_hasGpuData(false), m_timestampNs(0) {
 }
 
 #ifdef CUDA_ENABLED
 FrameMemoryObject::FrameMemoryObject(const cv::cuda::GpuMat& gpuMat) 
-    : m_gpuMat(gpuMat), m_memoryLocation(MemoryLocation::GPU), m_hasCpuData(false), m_hasGpuData(true) {
+    : m_gpuMat(gpuMat), m_memoryLocation(MemoryLocation::GPU), m_hasCpuData(false), m_hasGpuData(true), m_timestampNs(0) {
 }
 #endif
 
@@ -73,6 +89,9 @@ FrameMemoryObject FrameMemoryObject::clone() const {
     // Clone metadata
     result.m_metadata = m_metadata;
     
+    // Clone timestamp
+    result.m_timestampNs = m_timestampNs;
+    
     return result;
 }
 
@@ -100,6 +119,9 @@ std::string FrameMemoryObject::getInfo() const {
     if (!isEmpty()) {
         cv::Size size = m_cpuMat.size();
         info += " " + std::to_string(size.width) + "x" + std::to_string(size.height);
+    }
+    if (m_timestampNs != 0ULL) {
+        info += " ts=" + std::to_string(m_timestampNs) + "ns";
     }
     return info;
 }

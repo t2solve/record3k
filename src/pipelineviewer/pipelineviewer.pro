@@ -1,18 +1,18 @@
 include(../../obj/common.pri)
 
+QT += widgets
 
 TEMPLATE = app
-TARGET = test2
+TARGET = pipelineviewer
 DESTDIR = ../../bin
 
 # Use liblbt headers and link to the built .so
 INCLUDEPATH += $$PWD/../liblbt/include
-# Link path for in-tree run (source) and out-of-source build products
 LIBS += -L$$OUT_PWD/../../lib -L$$PWD/../../lib -llbt -Wl,-rpath,\'\$$ORIGIN/../lib\'
 
 SOURCES += \
-    src/main.cpp \
-    src/test_image_generator.cpp
+    main.cpp \
+    MainWindow.cpp
 
-#HEADERS += \
-#    include/mainwindow.h
+HEADERS += \
+    MainWindow.h

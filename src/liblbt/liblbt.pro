@@ -21,13 +21,9 @@ SOURCES += \
     $$files($$PWD/src/*.cpp) \
     $$files($$PWD/src/steps/*.cpp)
 
-
 HEADERS += \
-    include/liblbt/process_step_factory.h \
-    include/liblbt/processing_pipeline.h \
-    include/liblbt/frame_memory_object.h \
-    include/liblbt/pipeline_profiler.h \
-    include/liblbt/pipeline_config_loader.h
+    $$files($$PWD/src/*.h) \
+    $$files($$PWD/src/steps/*.h)
 
 # Or for static library
 # CONFIG += static

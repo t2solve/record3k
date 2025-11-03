@@ -9,6 +9,7 @@
 #include "filter_config.h"
 #include <map>
 #include <any>
+#include <cstdint>
 
 enum class MemoryLocation {
     CPU,
@@ -31,6 +32,18 @@ public:
     MemoryLocation getMemoryLocation() const;
     void moveToMemoryLocation(MemoryLocation targetLocation);
     std::string getInfo() const;
+
+    // Timestamp API (nanoseconds, e.g., from camera hardware clock)
+    void setTimestampNs(uint64_t tsNs) noexcept;
+    uint64_t timestampNs() const noexcept;
+    bool hasTimestamp() const noexcept;
+    // Touch: set timestamp to current monotonic time (steady_clock) in nanoseconds
+    void touchTimestampNow() noexcept;
+
+    #ifdef VIMBAX_ENABLED
+    // Convenience: set directly from VimbaX timestamp value (already in ns)
+    void setTimestampFromVimba(uint64_t tsNs) noexcept;
+    #endif
     
     #ifdef CUDA_ENABLED
     cv::cuda::GpuMat getGpuMat() const;
@@ -59,7 +72,8 @@ private:
     cv::cuda::GpuMat gpuMat;
     #endif
     std::map<std::string, std::any> m_metadata;  // Store additional data
-    
+    uint64_t m_timestampNs{0}; // nanoseconds since device epoch (0 = unset)
+
     MemoryLocation m_memoryLocation;
     bool m_hasCpuData;
     bool m_hasGpuData;

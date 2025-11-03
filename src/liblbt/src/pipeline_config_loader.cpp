@@ -1,49 +1,113 @@
 #include "pipeline_config_loader.h"
 #include <stdexcept>
+#include <iostream>
 
 PipelineConfigLoader::PipelineConfig PipelineConfigLoader::loadFromXML(const std::string& filename) {
     cv::FileStorage fs(filename, cv::FileStorage::READ);
     if (!fs.isOpened()) {
         throw std::runtime_error("Cannot open pipeline config file: " + filename);
     }
-    
-    PipelineConfig config;
-    
-    // Read processing mode
-    std::string modeStr;
-    fs["pipeline"]["processing_mode"] >> modeStr;
-    config.mode = stringToProcessingMode(modeStr);
-    
-    // Read steps
-    cv::FileNode stepsNode = fs["pipeline"]["steps"];
-    for (cv::FileNodeIterator it = stepsNode.begin(); it != stepsNode.end(); ++it) {
-        cv::FileNode stepNode = *it;
-        
-        std::string stepName;
-        int enabled;
-        stepNode["name"] >> stepName;
-        stepNode["enabled"] >> enabled;
-        
-        if (enabled) {
-            // Create step
-            FilterType filterType = stringToFilterType(stepName);
-            auto step = ProcessStepFactory::createStep(filterType, config.mode);
-            config.steps.push_back(step);
-            
-            // Create config
-            FilterConfig filterConfig;
-            cv::FileNode paramsNode = stepNode["parameters"];
-            for (cv::FileNodeIterator paramIt = paramsNode.begin(); paramIt != paramsNode.end(); ++paramIt) {
-                cv::FileNode paramNode = *paramIt;
-                std::string paramName = paramNode.name();
-                double paramValue = (double)paramNode;
-                filterConfig.setParameter(paramName, paramValue);
-            }
 
-            config.configs.push_back(filterConfig);
+    PipelineConfig config;
+
+    try {
+        cv::FileNode pipelineNode = fs["pipeline"];
+        if (pipelineNode.empty()) {
+            std::cerr << "[PipelineConfigLoader] Missing 'pipeline' node in XML: " << filename << "\n";
+            fs.release();
+            return config;
         }
+
+        // processing_mode is optional
+        std::string modeStr;
+        cv::FileNode modeNode = pipelineNode["processing_mode"];
+        if (!modeNode.empty()) modeNode >> modeStr;
+        config.mode = stringToProcessingMode(modeStr);
+
+        // steps is optional
+        cv::FileNode stepsNode = pipelineNode["steps"];
+        if (stepsNode.empty()) {
+            std::cerr << "[PipelineConfigLoader] No 'steps' node; using empty pipeline\n";
+            fs.release();
+            return config;
+        }
+        if (stepsNode.type() != cv::FileNode::SEQ) {
+            std::cerr << "[PipelineConfigLoader] 'steps' is not a sequence; ignoring\n";
+            fs.release();
+            return config;
+        }
+
+        int idx = 0;
+        for (cv::FileNodeIterator it = stepsNode.begin(); it != stepsNode.end(); ++it, ++idx) {
+            try {
+                cv::FileNode stepNode = *it;
+                if (stepNode.empty() || stepNode.type() != cv::FileNode::MAP) {
+                    std::cerr << "[PipelineConfigLoader] Step " << idx << " is not a map; skipping\n";
+                    continue;
+                }
+
+                std::string stepName;
+                int enabled = 1;
+                cv::FileNode nameNode = stepNode["name"];
+                if (nameNode.empty()) {
+                    std::cerr << "[PipelineConfigLoader] Step " << idx << " missing 'name'; skipping\n";
+                    continue;
+                }
+                nameNode >> stepName;
+                cv::FileNode enabledNode = stepNode["enabled"];
+                if (!enabledNode.empty()) enabledNode >> enabled;
+                if (!enabled) continue;
+
+                FilterType filterType = ProcessStepFactory::nameToFilterType(stepName);
+                if (filterType == FilterType::NONE) {
+                    std::cerr << "[PipelineConfigLoader] Unknown step name '" << stepName << "' at index " << idx << "; skipping\n";
+                    continue;
+                }
+
+                std::shared_ptr<ProcessStep> step = nullptr;
+                try {
+                    step = ProcessStepFactory::createStep(filterType, config.mode);
+                } catch (const std::exception& e) {
+                    std::cerr << "[PipelineConfigLoader] Failed to create step '" << stepName << "': " << e.what() << "\n";
+                    continue;
+                }
+                config.steps.push_back(step);
+
+                // parameters optional
+                FilterConfig filterConfig;
+                cv::FileNode paramsNode = stepNode["parameters"];
+                if (!paramsNode.empty() && paramsNode.type() == cv::FileNode::MAP) {
+                    for (cv::FileNodeIterator pit = paramsNode.begin(); pit != paramsNode.end(); ++pit) {
+                        cv::FileNode paramNode = *pit;
+                        std::string paramName = paramNode.name();
+                        double paramValue = 0.0;
+                        try {
+                            paramValue = (double)paramNode;
+                        } catch (...) {
+                            std::cerr << "[PipelineConfigLoader] Non-numeric parameter '" << paramName << "' in step '" << stepName << "'\n";
+                            continue;
+                        }
+                        filterConfig.setParameter(paramName, paramValue);
+                    }
+                }
+                config.configs.push_back(filterConfig);
+            } catch (const std::exception& e) {
+                std::cerr << "[PipelineConfigLoader] Error parsing step at index " << idx << ": " << e.what() << "\n";
+                // continue to next step
+            }
+        }
+
+        if (config.steps.size() != config.configs.size()) {
+            std::cerr << "[PipelineConfigLoader] Steps/configs size mismatch (" << config.steps.size() << " vs " << config.configs.size() << ") — trimming\n";
+            size_t m = std::min(config.steps.size(), config.configs.size());
+            config.steps.resize(m);
+            config.configs.resize(m);
+        }
+    } catch (...) {
+        fs.release();
+        throw;
     }
-    
+
     fs.release();
     return config;
 }
@@ -93,19 +157,8 @@ std::string PipelineConfigLoader::processingModeToString(ProcessingMode mode) {
 }
 
 FilterType PipelineConfigLoader::stringToFilterType(const std::string& filterName) {
-    if (filterName == "GaussianBlur_CPU" || filterName == "GaussianBlur_CUDA") return FilterType::GAUSSIAN_BLUR;
-    if (filterName == "BilateralFilter_CPU" || filterName == "BilateralFilter_CUDA") return FilterType::BILATERAL_FILTER;
-    if (filterName == "MedianFilter_CPU") return FilterType::MEDIAN_FILTER;
-    if (filterName == "Sharpen_CPU" || filterName == "Sharpen_CUDA") return FilterType::SHARPEN;
-    if (filterName == "EdgeDetection_CPU" || filterName == "EdgeDetection_CUDA") return FilterType::EDGE_DETECTION;
-    if (filterName == "Denoise_CPU") return FilterType::DENOISE;
-    if (filterName == "BackgroundSubtraction_CPU" || filterName == "BackgroundSubtraction_CUDA") return FilterType::BACKGROUND_SUBTRACTION_MOG2;
-    if (filterName == "BackgroundSubtraction_GMG") return FilterType::BACKGROUND_SUBTRACTION_GMG;
-    if (filterName == "BackgroundSubtraction_CNT") return FilterType::BACKGROUND_SUBTRACTION_CNT;
-    if (filterName == "ContourDetection_CPU" || filterName == "ContourDetection_CUDA") return FilterType::CONTOUR_DETECTION;
-    if (filterName == "LensCorrection_CPU" || filterName == "LensCorrection_CUDA") return FilterType::LENS_CORRECTION;
-    if (filterName == "ROICircleCrop_CPU" || filterName == "ROICircleCrop_CUDA") return FilterType::ROI_CIRCLE_CROP;
-    return FilterType::NONE;
+    // Delegate to the factory helper to avoid duplication and keep the mapping in one place
+    return ProcessStepFactory::nameToFilterType(filterName);
 }
 
 std::string PipelineConfigLoader::filterTypeToString(FilterType filterType) {
@@ -122,6 +175,10 @@ std::string PipelineConfigLoader::filterTypeToString(FilterType filterType) {
         case FilterType::CONTOUR_DETECTION: return "CONTOUR_DETECTION";
         case FilterType::LENS_CORRECTION: return "LENS_CORRECTION";
         case FilterType::ROI_CIRCLE_CROP: return "ROI_CIRCLE_CROP";
+        case FilterType::MASS_CENTER_OVERLAY: return "MASS_CENTER_OVERLAY";
+        case FilterType::BINARY_THRESHOLD: return "BINARY_THRESHOLD";
+        case FilterType::CONTOUR_AREA_FILTER: return "CONTOUR_AREA_FILTER";
+        case FilterType::MORPHOLOGY_CLOSE: return "MORPHOLOGY_CLOSE";
         default: return "NONE";
     }
 }

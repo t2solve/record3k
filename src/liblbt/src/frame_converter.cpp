@@ -1,3 +1,4 @@
+#ifdef VIMBAX_ENABLED
 #include "frame_converter.h"
 #include <opencv2/imgproc.hpp>
 
@@ -191,3 +192,4 @@ std::string FrameConverter::getFrameStatusString(VmbFrameStatusType status) {
         default: return "Unknown";
     }
 }
+#endif // VIMBAX_ENABLED

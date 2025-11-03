@@ -6,6 +6,7 @@
 #include <memory>
 #include <filesystem>
 
+const size_t DISK_IMAGE_MAX_PRELOAD = 1000; // Max number of images to preload for stable profiling
 class DiskImageFrameSource : public IFrameSource {
 public:
     DiskImageFrameSource(const std::string& directory, const std::string& pattern = "*.jpg");
@@ -14,6 +15,7 @@ public:
     bool isReady() const override;
 
 private:
-    std::vector<std::string> files_;
-    std::vector<std::string>::iterator current_;
+    // Preloaded images (up to a cap) for stable profiling without disk I/O jitter
+    std::vector<cv::Mat> images_;
+    size_t currentIndex_ {0};
 };

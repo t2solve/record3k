@@ -5,6 +5,7 @@ TARGET = genvideo
 DESTDIR = ../../bin
 
 
+
 SOURCES += \
     src/main.cpp \
     src/test_video_generator.cpp

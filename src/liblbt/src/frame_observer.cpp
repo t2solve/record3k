@@ -1,3 +1,4 @@
+#ifdef VIMBAX_ENABLED
 #include <opencv2/opencv.hpp>
 #include <QDebug>
 #include <sstream>
@@ -67,3 +68,4 @@ void FrameObserver::FrameReceived(const FramePtr pFrame)
     }
     m_pCamera->QueueFrame(pFrame);
 }
+#endif // VIMBAX_ENABLED

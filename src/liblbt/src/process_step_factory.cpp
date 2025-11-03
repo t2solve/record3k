@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "process_step_factory.h"
 #include "steps/gaussian_blur.h"
 #include "steps/bilateral_filter.h"
@@ -11,6 +12,41 @@
 #include "steps/roi_circle_crop.h"
 #include "steps/contour_area_filter.h"
 #include "steps/binary_threshold.h"
+#include "steps/mass_center_overlay.h"
+#include "steps/morphology_close.h" 
+#include "steps/project_point_to_2d_surface.h"
+
+std::shared_ptr<ProcessStep> ProcessStepFactory::createProjectPointTo2DSurface(ProcessingMode mode) {
+    switch (mode) {
+        case ProcessingMode::CPU_ONLY:
+            return std::make_shared<ProjectPointTo2DSurfaceCPUStep>();
+        case ProcessingMode::CUDA_PREFERRED:
+        case ProcessingMode::CUDA_ONLY:
+            // Currently only CPU implementation is available
+            return std::make_shared<ProjectPointTo2DSurfaceCPUStep>();
+        default:
+            return std::make_shared<ProjectPointTo2DSurfaceCPUStep>();
+    }
+}
+
+std::shared_ptr<ProcessStep> ProcessStepFactory::createMorphologyClose(ProcessingMode mode) {
+    switch (mode) {
+        case ProcessingMode::CPU_ONLY:
+            return std::make_shared<MorphologyCloseCPUStep>();
+        case ProcessingMode::CUDA_PREFERRED:
+        case ProcessingMode::CUDA_ONLY:
+#ifdef CUDA_ENABLED
+            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+                return std::make_shared<MorphologyCloseCUDAStep>();
+            } else if (mode == ProcessingMode::CUDA_ONLY) {
+                throw std::runtime_error("CUDA not available for morphology close");
+            }
+#endif
+            return std::make_shared<MorphologyCloseCPUStep>();
+        default:
+            return std::make_shared<MorphologyCloseCPUStep>();
+    }
+}
 
 std::shared_ptr<ProcessStep> ProcessStepFactory::createGaussianBlur(ProcessingMode mode) {
     switch (mode) {
@@ -223,6 +259,17 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createBinaryThreshold(Processin
     }
 }
 
+std::shared_ptr<ProcessStep> ProcessStepFactory::createMassCenterOverlay(ProcessingMode mode) {
+    // CPU-only step; draws a red dot on the frame
+    (void)mode;
+    return std::make_shared<MassCenterOverlayCPUStep>();
+}
+
+static std::shared_ptr<ProcessStep> createProjectPointTo2DSurface(ProcessingMode mode) {
+    (void)mode;
+    return std::make_shared<ProjectPointTo2DSurfaceCPUStep>();
+}
+
 std::shared_ptr<ProcessStep> ProcessStepFactory::createStep(FilterType filterType, ProcessingMode mode) {
     switch (filterType) {
         case FilterType::GAUSSIAN_BLUR:
@@ -253,9 +300,75 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createStep(FilterType filterTyp
             return createContourAreaFilter(mode);
         case FilterType::BINARY_THRESHOLD:
             return createBinaryThreshold(mode);
+        case FilterType::MASS_CENTER_OVERLAY:
+            return createMassCenterOverlay(mode);
+        case FilterType::PROJECT_POINT_TO_2D_SURFACE:
+            return createProjectPointTo2DSurface(mode);
+        case FilterType::MORPHOLOGY_CLOSE:
+            return createMorphologyClose(mode);
         case FilterType::NONE:
         case FilterType::CUSTOM:
         default:
             throw std::invalid_argument("Unknown or unsupported filter type");
+    }
+}
+
+static std::string toLowerCopy(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return std::tolower(c); });
+    return s;
+}
+
+FilterType ProcessStepFactory::nameToFilterType(const std::string& stepName) {
+    std::string n = toLowerCopy(stepName);
+    // Background variants first to allow GMG/CNT detection
+    if (n.find("backgroundsubtraction_gmg") != std::string::npos || n.find("gmg") != std::string::npos)
+        return FilterType::BACKGROUND_SUBTRACTION_GMG;
+    if (n.find("backgroundsubtraction_cnt") != std::string::npos || n.find("cnt") != std::string::npos)
+        return FilterType::BACKGROUND_SUBTRACTION_CNT;
+    if (n.find("backgroundsubtraction") != std::string::npos)
+        return FilterType::BACKGROUND_SUBTRACTION_MOG2;
+
+    if (n.find("gaussianblur") != std::string::npos) return FilterType::GAUSSIAN_BLUR;
+    if (n.find("bilateralfilter") != std::string::npos) return FilterType::BILATERAL_FILTER;
+    if (n.find("medianfilter") != std::string::npos) return FilterType::MEDIAN_FILTER;
+    if (n.find("sharpen") != std::string::npos) return FilterType::SHARPEN;
+    if (n.find("edgedetection") != std::string::npos) return FilterType::EDGE_DETECTION;
+    if (n.find("denoise") != std::string::npos) return FilterType::DENOISE;
+    if (n.find("contourdetection") != std::string::npos) return FilterType::CONTOUR_DETECTION;
+    if (n.find("lenscorrection") != std::string::npos) return FilterType::LENS_CORRECTION;
+    if (n.find("roicirclecrop") != std::string::npos || n.find("roi_circle_crop") != std::string::npos) return FilterType::ROI_CIRCLE_CROP;
+    if (n.find("binarythreshold") != std::string::npos) return FilterType::BINARY_THRESHOLD;
+    if (n.find("contourareafilter") != std::string::npos) return FilterType::CONTOUR_AREA_FILTER;
+    if (n.find("masscenteroverlay") != std::string::npos || n.find("mass_center_overlay") != std::string::npos || n.find("drawmasscenter") != std::string::npos)
+        return FilterType::MASS_CENTER_OVERLAY;
+    if (n.find("projectpointto2dsurface") != std::string::npos || n.find("project_point_to_2d_surface") != std::string::npos || n.find("pixel2world") != std::string::npos)
+        return FilterType::PROJECT_POINT_TO_2D_SURFACE;
+    if (n.find("morphologyclose") != std::string::npos || n.find("morphclose") != std::string::npos || n.find("closing") != std::string::npos)
+        return FilterType::MORPHOLOGY_CLOSE;
+    return FilterType::NONE;
+}
+
+std::string ProcessStepFactory::filterTypeBaseName(FilterType filterType) {
+    switch (filterType) {
+        case FilterType::GAUSSIAN_BLUR: return "GaussianBlur";
+        case FilterType::BILATERAL_FILTER: return "BilateralFilter";
+        case FilterType::MEDIAN_FILTER: return "MedianFilter";
+        case FilterType::EDGE_DETECTION: return "EdgeDetection";
+        case FilterType::SHARPEN: return "Sharpen";
+        case FilterType::DENOISE: return "Denoise";
+        case FilterType::BACKGROUND_SUBTRACTION_MOG2: return "BackgroundSubtraction";
+        case FilterType::BACKGROUND_SUBTRACTION_GMG: return "BackgroundSubtraction_GMG";
+        case FilterType::BACKGROUND_SUBTRACTION_CNT: return "BackgroundSubtraction_CNT";
+        case FilterType::CONTOUR_DETECTION: return "ContourDetection";
+        case FilterType::LENS_CORRECTION: return "LensCorrection";
+        case FilterType::ROI_CIRCLE_CROP: return "ROICircleCrop";
+        case FilterType::BINARY_THRESHOLD: return "BinaryThreshold";
+        case FilterType::CONTOUR_AREA_FILTER: return "ContourAreaFilter";
+        case FilterType::MASS_CENTER_OVERLAY: return "MassCenterOverlay";
+    case FilterType::PROJECT_POINT_TO_2D_SURFACE: return "ProjectPointTo2DSurface";
+        case FilterType::MORPHOLOGY_CLOSE: return "MorphologyClose";
+        case FilterType::NONE:
+        case FilterType::CUSTOM:
+        default: return "UNKNOWN";
     }
 }

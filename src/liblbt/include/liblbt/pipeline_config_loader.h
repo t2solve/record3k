@@ -14,10 +14,10 @@ public:
     
     static PipelineConfig loadFromXML(const std::string& filename);
     static void saveToXML(const std::string& filename, const PipelineConfig& config);
-    
-private:
     static ProcessingMode stringToProcessingMode(const std::string& modeStr);
     static std::string processingModeToString(ProcessingMode mode);
+    
+private:
     static FilterType stringToFilterType(const std::string& filterName);
     static std::string filterTypeToString(FilterType filterType);
 };

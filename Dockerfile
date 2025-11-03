@@ -1,7 +1,7 @@
 # BUILD: docker build --network=host -t recorder-3k .
-# LOGIN: docker run  docker run --gpus all  --network=host  recorder-3k -it --name recorder-3k recorder-3k bash
+# LOGIN: docker run --gpus all  --network=host  recorder-3k -it --name recorder-3k recorder-3k bash
 # RUN: docker run  --gpus all  --network=host  recorder-3k
-
+# login: docker run --network=host  --gpus all  -it recorder-3k bash
 # podman run --rm -it --name recorder-3k --gpus all --network=host recorder-3k bash
 # podman run --rm -it --name recorder-3k \
 #  --network=host -v "$PWD":/app -w /app \
@@ -38,8 +38,8 @@ RUN ls -al /app/src/liblbt/include/liblbt
 #RUN apt-get update && apt-get install -y gdb
 
 #build test 
-RUN cd /app/ && qmake6 testrecord3k.pro
-RUN cd /app/ && make -j 6 CONFIG+=cuda CONFIG+=vimbax
+RUN cd /app/ && qmake6 CONFIG+=cuda CONFIG+=vimbax testrecord3k.pro 
+RUN cd /app/ && make -j 6
 
 # install the Vimba SDK drivers 
 RUN /app/vimbax/cti/Install_GenTL_Path.sh
@@ -57,4 +57,4 @@ RUN export CWD="/app/vimbax/cti" && \
 ENV GENICAM_GENTL64_PATH=:/app/vimbax/cti
 
 # Run the application
-CMD ["/app/bin/test3recorder" ,"/app/bin/data"] 
+CMD ["/app/bin/test3recorder", "/app/bin/data"]
