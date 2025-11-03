@@ -1,7 +1,7 @@
 include(../../obj/common.pri)
 
 TEMPLATE = app
-TARGET = test3recorder
+TARGET = appConfigChecker
 DESTDIR = ../../bin
 
 # Use liblbt headers and link to the built .so

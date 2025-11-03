@@ -4,8 +4,8 @@
 #include "../frame_memory_object.h"
 #include <opencv2/opencv.hpp>
 #include <opencv2/video/background_segm.hpp>
-#include <opencv2/cudafilters.hpp>
 #ifdef CUDA_ENABLED
+#include <opencv2/cudafilters.hpp>
 #include <opencv2/cudabgsegm.hpp>
 #include "../cuda_utils.h"
 #endif

@@ -39,7 +39,7 @@ RUN ls -al /app/src/liblbt/include/liblbt
 
 #build test 
 RUN cd /app/ && qmake6 testrecord3k.pro
-RUN cd /app/ && make -j 6
+RUN cd /app/ && make -j 6 CONFIG+=cuda CONFIG+=vimbax
 
 # install the Vimba SDK drivers 
 RUN /app/vimbax/cti/Install_GenTL_Path.sh
@@ -57,4 +57,4 @@ RUN export CWD="/app/vimbax/cti" && \
 ENV GENICAM_GENTL64_PATH=:/app/vimbax/cti
 
 # Run the application
-# CMD ["/app/bin/test2"] 
+CMD ["/app/bin/test3recorder" ,"/app/bin/data"] 

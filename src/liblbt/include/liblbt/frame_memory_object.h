@@ -55,7 +55,9 @@ private:
     cv::cuda::GpuMat m_gpuMat;
     #endif
     cv::Mat cpuMat;
+    #ifdef CUDA_ENABLED
     cv::cuda::GpuMat gpuMat;
+    #endif
     std::map<std::string, std::any> m_metadata;  // Store additional data
     
     MemoryLocation m_memoryLocation;

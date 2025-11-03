@@ -1,5 +1,6 @@
 #pragma once
 
+#ifdef VIMBAX_ENABLED
 #include <VmbCPP/VmbCPP.h>
 #include <opencv2/opencv.hpp>
 #include <QDebug>
@@ -27,3 +28,4 @@ private:
                                      VmbPixelFormatType pixelFormat, bool debugMode = false);
     static int getBayerConversionCode(VmbPixelFormatType pixelFormat);
 };
+#endif // VIMBAX_ENABLED

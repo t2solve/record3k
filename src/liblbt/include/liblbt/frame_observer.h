@@ -1,4 +1,6 @@
 #pragma once
+
+#ifdef VIMBAX_ENABLED
 #include <VmbCPP/IFrameObserver.h>
 #include <VmbCPP/Camera.h>
 #include <VmbCPP/Frame.h>
@@ -12,3 +14,4 @@ public:
     FrameObserver(CameraPtr pCamera);
     void FrameReceived(const FramePtr pFrame) override;
 };
+#endif // VIMBAX_ENABLED
