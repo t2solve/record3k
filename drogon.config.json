@@ -1,0 +1,16 @@
+{
+  "listeners": [
+    { "address": "0.0.0.0", "port": 8080 }
+  ],
+  "app": {
+    "thread_number": 0,
+    "enable_run_as_daemon": false
+  },
+  "swagger": {
+    "enable": true,
+    "api_basepath": "/",
+    "title": "Testrecord3k API",
+    "description": "Auto-generated OpenAPI spec for testrecord3k endpoints",
+    "version": "1.0.0"
+  }
+}

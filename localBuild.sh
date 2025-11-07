@@ -9,8 +9,9 @@ set -euo pipefail
 #
 # Usage examples:
 #   ./localBuild.sh                 # build with defaults (CUDA+Vimba enabled by default per common.pri)
-#   ./localBuild.sh --no-cuda       # force-disable CUDA
-#   ./localBuild.sh --no-vimbax     # force-disable VimbaX
+#   ./localBuild.sh --cuda       # use CUDA
+#   ./localBuild.sh --vimbax     # use VimbaX
+#   ./localBuild.sh --api        # build the API server app
 #   ./localBuild.sh --clean         # clean build dir before building
 #   ./localBuild.sh -j 8            # build with 8 jobs
 #   ./localBuild.sh --x pipelineviewer   # build and run pipelineviewer
@@ -28,18 +29,21 @@ VALGRIND_CALLGRIND=0
 # Arg parsing
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --no-cuda)
-      EXTRA_CONFIG+=("CONFIG+=no_cuda")
+    --cuda)
+      EXTRA_CONFIG+=("CONFIG+=cuda")
       shift ;;
-    --no-vimbax)
-      EXTRA_CONFIG+=("CONFIG+=no_vimbax")
+    --vimbax)
+      EXTRA_CONFIG+=("CONFIG+=vimbax")
+      shift ;;
+    --api)
+      EXTRA_CONFIG+=("CONFIG+=api")
       shift ;;
     --clean)
       CLEAN=1
       shift ;;
     -j|--jobs)
       JOBS="${2:-$JOBS}"
-      shift 2 ;;
+      shift 2 ;;  
     --x)
       RUN_APP="${2:-}"
       if [[ -z "$RUN_APP" ]]; then
