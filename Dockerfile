@@ -38,7 +38,7 @@ RUN ls -al /app/src/liblbt/include/liblbt
 #RUN apt-get update && apt-get install -y gdb
 
 #build test 
-RUN cd /app/ && qmake6 CONFIG+=cuda CONFIG+=vimbax testrecord3k.pro 
+RUN cd /app/ && qmake6 CONFIG+=cuda CONFIG+=vimbax record3k.pro 
 RUN cd /app/ && make -j 6
 
 # install the Vimba SDK drivers 
