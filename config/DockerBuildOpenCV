@@ -1,0 +1,76 @@
+# BUILD podman build --network=host -t cuda-builder .
+
+# BUILD docker build --network=host -t cuda-builder .
+# LOGIN docker run -it --name cuda-builder cuda-builder bash
+FROM cuda-opencv:custom-base 
+
+# Set environment variables to avoid timezone prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+# add here drogon framework TODO extra docker file
+# deps are from base already
+#RUN git clone --depth 1 https://github.com/drogonframework/drogon.git /tmp/drogon && \
+#    mkdir -p /tmp/drogon/build && cd /tmp/drogon/build && \
+#    cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
+#    make -j$(nproc) && make install && \
+#    rm -rf /tmp/drogon && ldconfig
+
+# Define the latest stable version of OpenCV
+ENV LATEST_VERSION=4.11.0
+
+# Set the working directory
+WORKDIR /app
+
+# copy source code from local copy to speed up build
+COPY . .
+# check if the directory exists
+RUN if [ ! -d "opencv" ]; then \
+    clone https://github.com/opencv/opencv.git opencv ; \
+    fi
+
+RUN if [ ! -d "opencv_contrib" ]; then \
+    clone https://github.com/opencv/opencv_contrib.git opencv_contrib; \
+    fi
+
+# using ccache for faster builds 
+ENV CCACHE_DIR=/ccache
+RUN mkdir -p $CCACHE_DIR && chmod -R 777 $CCACHE_DIR
+
+# checkout the latest stable version
+RUN cd opencv && git checkout $LATEST_VERSION && cd .. && \
+    cd opencv_contrib && git checkout $LATEST_VERSION
+
+# do need to checkout one file for bugfix latest  https://github.com/opencv/opencv/issues/27289
+RUN cd opencv && git checkout - modules/core/include/opencv2/core/private.cuda.hpp
+
+# configure OpenCV with CUDA support
+RUN mkdir -p opencv/build && cd opencv/build && \
+    cmake -D CMAKE_BUILD_TYPE=Release \
+          -D OPENCV_GENERATE_PKGCONFIG=ON \
+          -D CMAKE_INSTALL_PREFIX=/usr/local \
+          -D OPENCV_EXTRA_MODULES_PATH=/app/opencv_contrib/modules \
+          -D CMAKE_C_COMPILER_LAUNCHER=ccache \
+          -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          -D WITH_CUDA=ON \
+          -D ENABLE_FAST_MATH=1 \
+          -D CUDA_FAST_MATH=1 \
+          -D WITH_CUBLAS=1 \
+          -D OPENCV_DNN_CUDA=ON \
+          -D BUILD_opencv_python3=ON \
+          -D PYTHON3_EXECUTABLE=/usr/bin/python3 \
+          -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda \
+          -D CUDNN_INCLUDE_DIR=/usr/include \
+          -D CUDNN_LIBRARY=/usr/lib/x86_64-linux-gnu/libcudnn.so \
+          -D CUDNN_VERSION=9.9.0 \
+          -D EIGEN_INCLUDE_PATH=/usr/include/eigen3 \
+          -D WITH_LAPACK=ON \
+          -D LAPACK_LIBRARIES=/usr/lib/x86_64-linux-gnu/liblapack.so \
+          -D LAPACK_INCLUDE_DIR=/usr/include \
+          .. 2>&1 | tee /app/cmake_build.log 
+# build 
+RUN cd opencv/build && make -j 16 2>&1 | tee /app/opencv_build.log 
+# install 
+RUN cd opencv/build && make install
+# run ldconfig to update the shared library cache
+RUN cd opencv/build && ldconfig

@@ -1,0 +1,98 @@
+# build
+# podman build --no-cache --network=host -t cuda-opencv:custom-base .
+# legacy: 
+# BUILD docker build  --no-cache --network=host -t cuda-opencv:custom-base .
+# new:
+# docker buildx create --name build-base --use
+# docker buildx inspect --bootstrap   # initializes it
+# docker buildx build --no-cache --network=host -t cuda-opencv:custom-base .
+# podman build --no-cache --network=host -t cuda-opencv:custom-base .
+FROM docker.io/nvidia/cuda:12.9.0-cudnn-devel-ubuntu24.04
+
+# Set environment variables to avoid timezone prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+# Fix apt permissions for Podman - create directories and set proper ownership
+RUN mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial && \
+    chmod 755 /var/lib/apt/lists/partial /var/cache/apt/archives/partial && \
+    chown _apt:root /var/lib/apt/lists/partial /var/cache/apt/archives/partial
+
+# replace with fast mirror
+#RUN sed -i 's|http://archive.ubuntu.com|https://ftp.uni-stuttgart.de/ubuntu/|g' /etc/apt/sources.list 
+
+# example replace security/archive with archive.ubuntu.com or old-releases.ubuntu.org
+RUN sed -i 's|http://security.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+
+# Remove any existing problematic NVIDIA repository configurations
+RUN rm -f /etc/apt/sources.list.d/cuda*.list /etc/apt/sources.list.d/nvidia*.list || true
+
+# Update apt without NVIDIA repos first to install basic tools
+RUN apt-get update && apt-get install -y wget ca-certificates gnupg
+
+# Now properly add NVIDIA repository with correct GPG handling
+RUN wget -qO - https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/3bf863cc.pub | gpg --dearmor -o /usr/share/keyrings/cuda-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/cuda-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/ /" > /etc/apt/sources.list.d/cuda.list
+
+# Skip the ML repository for now as the key seems problematic - we can add it later if needed
+# RUN wget -qO - https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu2404/x86_64/7fa2af80.pub | gpg --dearmor -o /usr/share/keyrings/nvidia-ml-keyring.gpg && \
+#     echo "deb [signed-by=/usr/share/keyrings/nvidia-ml-keyring.gpg] https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu2404/x86_64/ /" > /etc/apt/sources.list.d/nvidia-ml.list
+
+# Final update with all repositories properly configured
+RUN apt-get update 
+
+#  normal build tools
+RUN apt-get install -y --fix-missing \
+    ccache \
+    gdb \
+    build-essential \
+    cmake \
+    git \
+    pkg-config 
+
+# opencv deps
+RUN apt-get install -y  --fix-missing \
+    libgtk2.0-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    python3-dev \
+    python3-numpy \
+    libtbb-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libdc1394-dev \
+    libprotobuf-dev \
+    protobuf-compiler \
+    libopenblas-dev \
+    liblapack-dev \    
+    libeigen3-dev \
+    libhdf5-dev \
+    libva-dev \
+    libva-drm2 \
+    libva-x11-2 \
+    liblapack-dev \
+    libeigen3-dev \
+    libjsoncpp-dev \
+    libboost-system-dev \
+    libboost-filesystem-dev \ 
+    libboost-thread-dev
+# install qt6 deps
+RUN apt-get install -y --fix-missing \
+    libopenexr-dev \
+    qt6-base-dev-tools \
+    qt6-base-dev qmake6 \
+    qmake6-bin \
+    qt6-tools-dev \ 
+    qt6-tools-dev-tools 
+
+# install drogon framework deps
+RUN apt-get install -y --fix-missing \
+    libssl-dev \
+    zlib1g-dev \ 
+    libpcre2-dev \
+    libdrogon-dev 
+    
+# clean up
+RUN  rm -rf /var/lib/apt/lists/*

@@ -2,6 +2,7 @@
 # bin folder 
 bin/*
 obj/* 
+vimbax/*
 
 # Qt/qmake build artifacts
 *.o
