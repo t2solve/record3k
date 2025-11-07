@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Bug Tracker 3000</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🐛 Live Bug Tracker 3000</h1>
+            <p class="subtitle">Camera Management & Monitoring</p>
+        </header>
+
+        <main>
+            <section class="cameras-section">
+                <div class="section-header">
+                    <h2>Available Cameras</h2>
+                    <button id="refresh-btn" class="btn-refresh">🔄 Refresh</button>
+                </div>
+                
+                <div id="loading" class="loading">Loading cameras...</div>
+                <div id="error" class="error" style="display: none;"></div>
+                
+                <div id="camera-list" class="camera-grid"></div>
+            </section>
+
+            <section class="records-section">
+                <div class="section-header">
+                    <h2>Recording Sessions</h2>
+                    <button id="refresh-records-btn" class="btn-refresh">🔄 Refresh</button>
+                </div>
+                
+                <div id="records-loading" class="loading" style="display: none;">Loading records...</div>
+                <div id="records-error" class="error" style="display: none;"></div>
+                
+                <div id="records-list" class="records-list"></div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Connected to API: <span id="api-status" class="status-disconnected">Checking...</span></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+
+    <script>
+    // Hot reload via Server-Sent Events
+    const eventSource = new EventSource('/_hot_reload');
+    eventSource.onmessage = (e) => {
+        if (e.data === 'reload') {
+            console.log('🔄 Hot reload: File changed, reloading...');
+            location.reload();
+        }
+    };
+    eventSource.onerror = () => {
+        console.log('⚠️ Hot reload connection lost');
+    };
+    </script>
+</body>
+</html>
