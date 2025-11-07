@@ -1,0 +1,500 @@
+{
+  "components": {
+    "schemas": {
+      "CalibrationInfo": {
+        "properties": {
+          "calibrationUID": {
+            "type": "string"
+          },
+          "camUID": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "fileUID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CameraInfo": {
+        "properties": {
+          "camUID": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "macAddress": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FileInfo": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "fileUID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PipelineInfo": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "fileUID": {
+            "type": "string"
+          },
+          "pipelineUID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RecordInfo": {
+        "properties": {
+          "calibrationUID": {
+            "type": "string"
+          },
+          "durationInSeconds": {
+            "type": "number"
+          },
+          "endTime": {
+            "type": "string"
+          },
+          "fileUID": {
+            "type": "string"
+          },
+          "isTest": {
+            "type": "boolean"
+          },
+          "pipelineUID": {
+            "type": "string"
+          },
+          "recordUID": {
+            "type": "string"
+          },
+          "startTime": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "studyInfoUID": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "StudyMetaInfo": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "individualScientificName": {
+            "type": "string"
+          },
+          "studyInfoUID": {
+            "type": "string"
+          },
+          "weightInMg": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Manual OpenAPI document (fallback until native swagger available)",
+    "title": "Testrecord3k API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/add/pipeline": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineInfo"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "summary": "Add pipeline"
+      }
+    },
+    "/add/studyMetaInfo": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyMetaInfo"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "summary": "Add study meta info"
+      }
+    },
+    "/do/camera/record/{recordUID}/stop": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordInfo"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "summary": "Stop recording"
+      }
+    },
+    "/do/camera/{camUID}/calibrate": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationInfo"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "summary": "Trigger calibration"
+      }
+    },
+    "/do/camera/{camUID}/pipelinetest": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordInfo"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "summary": "Pipeline test record"
+      }
+    },
+    "/do/record/start": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordInfo"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "summary": "Start recording"
+      }
+    },
+    "/get/file/binary/{fileUID}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Download file binary"
+      }
+    },
+    "/get/file/info/{fileUID}": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileInfo"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Get file info"
+      }
+    },
+    "/get/file/list": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FileInfo"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List files"
+      }
+    },
+    "/info/calibrations/get/{calibrationUID}": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationInfo"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Get calibration"
+      }
+    },
+    "/info/calibrations/list": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CalibrationInfo"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List calibrations"
+      }
+    },
+    "/info/cameras/get/{camUID}": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraInfo"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Get camera by UID"
+      }
+    },
+    "/info/cameras/list": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CameraInfo"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List cameras"
+      }
+    },
+    "/info/pipelines/get/{pipelineUID}": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineInfo"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Get pipeline"
+      }
+    },
+    "/info/pipelines/list": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PipelineInfo"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List pipelines"
+      }
+    },
+    "/info/records/get/{recordUID}": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordInfo"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Get record"
+      }
+    },
+    "/info/records/list": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecordInfo"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List records"
+      }
+    }
+  }
+}

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Start Recording - Live Bug Tracker 3000</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🐛 Live Bug Tracker 3000</h1>
+            <p class="subtitle">Start New Recording</p>
+        </header>
+
+        <nav class="main-nav">
+            <a href="index.html" class="nav-link">📷 Cameras</a>
+            <a href="records.html" class="nav-link">📹 Records</a>
+            <a href="start.html" class="nav-link active">▶️ Start Recording</a>
+            <a href="http://127.0.0.1:8080/swagger" class="nav-link" target="_blank">📚 API Docs</a>
+        </nav>
+
+        <main>
+            <section class="start-recording-section">
+                <div class="recording-form-container">
+                    <form id="recording-form">
+                        <!-- Step A: Camera Selection -->
+                        <div class="form-section">
+                            <h3>📷 Step 1: Select Camera</h3>
+                            <div class="form-group">
+                                <label for="camera-select">Camera *</label>
+                                <select id="camera-select" required>
+                                    <option value="">-- Loading cameras... --</option>
+                                </select>
+                                <small class="form-help">Select the camera to use for recording</small>
+                            </div>
+                        </div>
+
+                        <!-- Step B: Calibration Selection -->
+                        <div class="form-section">
+                            <h3>🎯 Step 2: Select Calibration</h3>
+                            <div class="form-group">
+                                <label for="calibration-select">Calibration *</label>
+                                <select id="calibration-select" required disabled>
+                                    <option value="">-- Select camera first --</option>
+                                </select>
+                                <small class="form-help">Latest calibration will be pre-selected</small>
+                            </div>
+                            <div id="calibration-info" class="info-box" style="display: none;">
+                                <strong>Selected Calibration:</strong>
+                                <div class="info-details">
+                                    <p><span class="label">Date:</span> <span id="cal-date">-</span></p>
+                                    <p><span class="label">Description:</span> <span id="cal-desc">-</span></p>
+                                    <p><span class="label">Status:</span> <span id="cal-status">-</span></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step C: Pipeline Selection -->
+                        <div class="form-section">
+                            <h3>⚙️ Step 3: Select Processing Pipeline</h3>
+                            <div class="form-group">
+                                <label for="pipeline-select">Pipeline *</label>
+                                <select id="pipeline-select" required disabled>
+                                    <option value="">-- Select camera first --</option>
+                                </select>
+                                <small class="form-help">Latest pipeline will be pre-selected</small>
+                            </div>
+                            <div id="pipeline-info" class="info-box" style="display: none;">
+                                <strong>Selected Pipeline:</strong>
+                                <div class="info-details">
+                                    <p><span class="label">Name:</span> <span id="pipe-name">-</span></p>
+                                    <p><span class="label">Description:</span> <span id="pipe-desc">-</span></p>
+                                    <p><span class="label">Status:</span> <span id="pipe-status">-</span></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step D: Study Metadata -->
+                        <div class="form-section">
+                            <h3>📋 Step 4: Study Metadata</h3>
+                            <div class="form-group">
+                                <label for="study-desc">Study Description</label>
+                                <textarea id="study-desc" rows="2" placeholder="Brief description of this study"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="scientific-name">Scientific Name *</label>
+                                <input type="text" id="scientific-name" required placeholder="e.g., Drosophila melanogaster">
+                            </div>
+                            <div class="form-group">
+                                <label for="weight">Weight (mg) *</label>
+                                <input type="number" id="weight" step="0.1" min="0" required placeholder="0.0">
+                            </div>
+                        </div>
+
+                        <!-- Step E: Recording Settings -->
+                        <div class="form-section">
+                            <h3>⏱️ Step 5: Recording Settings</h3>
+                            <div class="form-group">
+                                <label>Duration *</label>
+                                <div class="duration-inputs">
+                                    <div class="duration-field">
+                                        <input type="number" id="duration-hours" min="0" value="0" step="1">
+                                        <label for="duration-hours">hours</label>
+                                    </div>
+                                    <div class="duration-field">
+                                        <input type="number" id="duration-minutes" min="0" max="59" value="0" step="1">
+                                        <label for="duration-minutes">minutes</label>
+                                    </div>
+                                    <div class="duration-field">
+                                        <input type="number" id="duration-seconds" min="0" max="59" value="10" step="1">
+                                        <label for="duration-seconds">seconds</label>
+                                    </div>
+                                </div>
+                                <small class="form-help">Specify recording duration (at least 1 second required)</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="record-desc">Recording Description</label>
+                                <textarea id="record-desc" rows="2" placeholder="Optional notes about this recording session"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Step F: Start Button -->
+                        <div class="form-actions">
+                            <button type="submit" class="btn-start" id="start-btn">
+                                ▶️ Start Recording
+                            </button>
+                            <button type="button" class="btn-secondary" onclick="window.location.href='records.html'">
+                                Cancel
+                            </button>
+                        </div>
+
+                        <div id="form-status" class="form-status" style="display: none;"></div>
+                    </form>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Connected to API: <span id="api-status" class="status-disconnected">Checking...</span></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -3,34 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Bug Tracker 3000</title>
+    <title>Records - Live Bug Tracker 3000</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <header>
             <h1>🐛 Live Bug Tracker 3000</h1>
-            <p class="subtitle">Camera Management & Monitoring</p>
+            <p class="subtitle">Recording Sessions</p>
         </header>
 
         <nav class="main-nav">
-            <a href="index.html" class="nav-link active">📷 Cameras</a>
-            <a href="records.html" class="nav-link">📹 Records</a>
+            <a href="index.html" class="nav-link">📷 Cameras</a>
+            <a href="records.html" class="nav-link active">📹 Records</a>
             <a href="start.html" class="nav-link">▶️ Start Recording</a>
             <a href="http://127.0.0.1:8080/swagger" class="nav-link" target="_blank">📚 API Docs</a>
         </nav>
 
         <main>
-            <section class="cameras-section">
+            <section class="records-section">
                 <div class="section-header">
-                    <h2>Available Cameras</h2>
-                    <button id="refresh-btn" class="btn-refresh">🔄 Refresh</button>
+                    <h2>Recording Sessions</h2>
+                    <button id="refresh-records-btn" class="btn-refresh">🔄 Refresh</button>
                 </div>
                 
-                <div id="loading" class="loading">Loading cameras...</div>
-                <div id="error" class="error" style="display: none;"></div>
+                <div id="records-loading" class="loading">Loading records...</div>
+                <div id="records-error" class="error" style="display: none;"></div>
                 
-                <div id="camera-list" class="camera-grid"></div>
+                <div id="records-list" class="records-list"></div>
             </section>
         </main>
 
