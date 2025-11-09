@@ -4,6 +4,7 @@ aim: real time bug tracker with GPU support
 ## Parts
 * image processing lib based on opencv (cpp) 
 * mini client app (html;js)
+* mini tool to parameterizse the processing pipeline
 
 ## Summary
 features: 
@@ -19,9 +20,12 @@ do a local build (deps needed)
 /localBuild.sh --cuda -vimbax --api  -j 8    
 ```
 
-do a docker build
+do a docker build:
+
 step 1: build config/DockerCustomBase 
+
 step 2: build config/DockerBuildOpenCV
+
 step 3: build config/Dockerfile
 
 ## License

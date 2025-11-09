@@ -311,7 +311,7 @@
         "summary": "Download file binary"
       }
     },
-    "/get/file/info/{fileUID}": {
+    "/info/files/get/{fileUID}": {
       "get": {
         "responses": {
           "200": {
@@ -328,7 +328,7 @@
         "summary": "Get file info"
       }
     },
-    "/get/file/list": {
+    "/info/files/list": {
       "get": {
         "responses": {
           "200": {
@@ -494,6 +494,44 @@
           }
         },
         "summary": "List records"
+      }
+    }
+    ,
+    "/info/studies/get/{studyInfoUID}": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyMetaInfo"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Get study"
+      }
+    },
+    "/info/studies/list": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StudyMetaInfo"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List studies"
       }
     }
   }
