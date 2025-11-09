@@ -1,9 +1,9 @@
-﻿#include "info_controller.h"
+﻿#include <api/controllers/info_controller.h>
 #include <drogon/drogon.h>
 #ifdef DEBUG_FLAG_MOCK
 #include <string>
 #else
-#include <liblbt/info_data_manager.h>
+#include <api/runtime/info_data_manager.h>
 #endif
 
 using namespace drogon;

@@ -1,4 +1,4 @@
-#include "docs_controller.h"
+#include <api/controllers/docs_controller.h>
 #include <drogon/drogon.h>
 #include <json/json.h>
 #include <vector>
