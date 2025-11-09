@@ -17,6 +17,13 @@ public:
 
     ADD_METHOD_TO(InfoController::listRecords, "/info/records/list", drogon::Get);
     ADD_METHOD_TO(InfoController::getRecord, "/info/records/get/{1}", drogon::Get);
+
+    // Moved from GetController
+    ADD_METHOD_TO(InfoController::listFiles, "/info/files/list", drogon::Get);
+    ADD_METHOD_TO(InfoController::getFileInfo, "/info/files/get/{1}", drogon::Get);
+    // New study meta info endpoints
+    ADD_METHOD_TO(InfoController::listStudies, "/info/studies/list", drogon::Get);
+    ADD_METHOD_TO(InfoController::getStudy, "/info/studies/get/{1}", drogon::Get);
     METHOD_LIST_END
 
     void listCameras(const drogon::HttpRequestPtr&, std::function<void (const drogon::HttpResponsePtr &)> && cb);
@@ -30,4 +37,12 @@ public:
 
     void listRecords(const drogon::HttpRequestPtr&, std::function<void (const drogon::HttpResponsePtr &)> && cb);
     void getRecord(const drogon::HttpRequestPtr&, std::function<void (const drogon::HttpResponsePtr &)> && cb, const std::string &recordUID);
+
+    // Moved from GetController
+    void listFiles(const drogon::HttpRequestPtr&, std::function<void (const drogon::HttpResponsePtr &)> && cb);
+    void getFileInfo(const drogon::HttpRequestPtr&, std::function<void (const drogon::HttpResponsePtr &)> && cb, const std::string &fileUID);
+
+    // New study meta info handlers
+    void listStudies(const drogon::HttpRequestPtr&, std::function<void (const drogon::HttpResponsePtr &)> && cb);
+    void getStudy(const drogon::HttpRequestPtr&, std::function<void (const drogon::HttpResponsePtr &)> && cb, const std::string &studyInfoUID);
 };

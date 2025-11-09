@@ -20,10 +20,12 @@ INCLUDEPATH += $$PWD/include \
 SOURCES += \
     $$files($$PWD/src/*.cpp) \
     $$files($$PWD/src/steps/*.cpp)
+    $$files($$PWD/src/factory/*.cpp)
 
 HEADERS += \
-    $$files($$PWD/src/*.h) \
-    $$files($$PWD/src/steps/*.h)
+    $$files($$PWD/include/liblbt/*.h) \
+    $$files($$PWD/include/liblbt/steps/*.h)
+    $$files($$PWD/include/liblbt/factory/*.h)
 
 # Or for static library
 # CONFIG += static

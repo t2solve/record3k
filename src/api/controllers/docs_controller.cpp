@@ -70,10 +70,12 @@ Json::Value buildSpec() {
     addGet("/info/calibrations/get/{calibrationUID}","Get calibration","CalibrationInfo");
     addGet("/info/records/list","List records","[RecordInfo]");
     addGet("/info/records/get/{recordUID}","Get record","RecordInfo");
+    addGet("/info/studies/list","List studies","[StudyMetaInfo]");
+    addGet("/info/studies/get/{studyInfoUID}","Get study","StudyMetaInfo");
 
-    // Get file endpoints
-    addGet("/get/file/list","List files","[FileInfo]");
-    addGet("/get/file/info/{fileUID}","Get file info","FileInfo");
+    // File info endpoints (moved under /info)
+    addGet("/info/files/list","List files","[FileInfo]");
+    addGet("/info/files/get/{fileUID}","Get file info","FileInfo");
     addGet("/get/file/binary/{fileUID}","Download file binary",""); // binary stream
 
     // Add endpoints
