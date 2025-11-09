@@ -28,6 +28,28 @@ step 2: build config/DockerBuildOpenCV
 
 step 3: build config/Dockerfile
 
+
+## Run 
+
+```bash
+cd build/bin
+# - copy default data folder if not exists
+# cp -r ../../data . 
+
+#  - mabye add lib to path
+# export LD_LIBRARY_PATH=../lib:$LD_LIBRARY_PATH
+# - run api server
+# ./apiserver
+```
+
+## View
+
+```bash
+cd client 
+caddy run --config Caddyfile
+# open via
+firefox http://127.0.0.1:3000/index.html
+```
 ## License
 
 Licensed under the MIT License. See the `LICENSE` file for the full text.

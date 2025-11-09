@@ -24,7 +24,7 @@ Json::Value buildSpec() {
         s["properties"] = props;
         return s;
     };
-    schemas["CameraInfo"]      = simpleObj({{"camUID","string"},{"macAddress","string"},{"description","string"},{"status","string"}});
+    schemas["CameraInfo"]      = simpleObj({{"camUID","string"},{"macAddress","string"},{"description","string"},{"status","string"},{"datetimeLastSeen","string"},{"cameraType","string"}});
     schemas["PipelineInfo"]    = simpleObj({{"pipelineUID","string"},{"description","string"},{"status","string"},{"createdAt","string"},{"fileUID","string"}});
     schemas["CalibrationInfo"] = simpleObj({{"calibrationUID","string"},{"camUID","string"},{"description","string"},{"status","string"},{"createdAt","string"},{"fileUID","string"}});
     schemas["RecordInfo"]      = simpleObj({{"recordUID","string"},{"calibrationUID","string"},{"isTest","boolean"},{"pipelineUID","string"},{"studyInfoUID","string"},{"status","string"},{"durationInSeconds","number"},{"startTime","string"},{"endTime","string"},{"fileUID","string"}});
@@ -83,10 +83,11 @@ Json::Value buildSpec() {
     addPost("/add/studyMetaInfo","Add study meta info","StudyMetaInfo",201);
 
     // Do endpoints
-    addPost("/do/camera/{camUID}/calibrate","Trigger calibration","CalibrationInfo",202);
-    addPost("/do/camera/{camUID}/pipelinetest","Pipeline test record","RecordInfo",202);
-    addPost("/do/record/start","Start recording","RecordInfo",201);
+    addPost("/do/camera/calibrate/{camUID}","Trigger calibration","CalibrationInfo",202);
+    addPost("/do/camera/pipelinetest/{camUID}","Pipeline test record","RecordInfo",202);
+    addPost("/do/camera/record/start/{camUID}","Start recording","RecordInfo",201);
     addPost("/do/camera/record/{recordUID}/stop","Stop recording","RecordInfo",200);
+    addPost("/do/camera/updatelist","Update & probe camera list","CameraInfo",200);
 
     root["paths"] = paths;
     root["components"] = components;

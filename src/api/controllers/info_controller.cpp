@@ -12,7 +12,7 @@ using namespace api;
 #ifdef DEBUG_FLAG_MOCK
 namespace {
 Json::Value mockCamera(const std::string &uid) {
-    CameraInfo c{uid, "AA:BB:CC:DD:EE:FF", std::string("Mock camera ")+uid, "online"};
+    CameraInfo c{uid, "AA:BB:CC:DD:EE:FF", std::string("Mock camera ")+uid, "online", "2025-11-07T00:00:00Z", "TYPE_CAM_VIMBA"};
     return c.toJson();
 }
 }

@@ -24,7 +24,10 @@
             <section class="cameras-section">
                 <div class="section-header">
                     <h2>Available Cameras</h2>
-                    <button id="refresh-btn" class="btn-refresh">🔄 Refresh</button>
+                    <div class="header-actions">
+                        <button id="update-btn" class="btn-refresh" title="Update camera list on server (probe & persist)">🛰️ Update List</button>
+                        <button id="refresh-btn" class="btn-refresh" title="Reload from API">🔄 Refresh</button>
+                    </div>
                 </div>
                 
                 <div id="loading" class="loading">Loading cameras...</div>

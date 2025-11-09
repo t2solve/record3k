@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # run : e.g. /localBuild.sh --no-cuda --no-vimbax -j 8 
-# Simple local builder for the testrecord3k project
+# Simple local builder for the record3k project
 # - Generates build files in ./build
 # - Builds with qmake + make
 # - On success, can optionally run a built app via --x <binary-name>
@@ -87,7 +87,7 @@ pushd "$BUILD_DIR" >/dev/null
 
 # Generate Makefiles
 set -x
-"$QMAKE_BIN" "$PROJECT_ROOT/testrecord3k.pro" CONFIG+=release ${EXTRA_CONFIG[@]:-}
+"$QMAKE_BIN" "$PROJECT_ROOT/record3k.pro" CONFIG+=release ${EXTRA_CONFIG[@]:-}
 set +x
 
 # Build

@@ -1,5 +1,7 @@
 #include <api/controllers/do_controller.h>
 #include <drogon/drogon.h>
+#include <api/runtime/info_data_manager.h>
+#include <liblbt/camera_manager.h>
 #include <ctime>
 
 using namespace drogon;
@@ -27,9 +29,8 @@ void DoController::cameraPipelineTest(const HttpRequestPtr& req, std::function<v
     cb(resp);
 }
 
-void DoController::recordStart(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> && cb) {
+void DoController::recordStart(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> && cb, const std::string &camUID) {
     auto json = req->getJsonObject();
-    std::string camUID = (json && json->isMember("camUID")) ? (*json)["camUID"].asString() : "cam-unknown";
     double durationMs = (json && json->isMember("durationInMS")) ? (*json)["durationInMS"].asDouble() : 1000.0;
     std::string calibrationUID = (json && json->isMember("calibrationUID")) ? (*json)["calibrationUID"].asString() : "cal-latest";
     std::string pipelineUID = (json && json->isMember("pipelineUID")) ? (*json)["pipelineUID"].asString() : "pipe-default";
@@ -46,4 +47,24 @@ void DoController::cameraRecordStop(const HttpRequestPtr&, std::function<void (c
     auto resp = HttpResponse::newHttpJsonResponse(r.toJson());
     resp->setStatusCode(k200OK);
     cb(resp);
+}
+
+// New endpoint to trigger camera list refresh
+void DoController::cameraUpdateList(const HttpRequestPtr&, std::function<void (const HttpResponsePtr &)> && cb) {
+    // Use CameraManager to (re)load and probe cameras under data/info/cameras
+    try {
+        lbt::CameraManager mgr(std::filesystem::path("data/info/cameras"));
+        mgr.load();
+        mgr.probeAll();
+        // Return the refreshed list from the store via InfoDataManager
+        auto arr = infoDataManager().list("cameras");
+        auto resp = HttpResponse::newHttpJsonResponse(arr);
+        resp->setStatusCode(k200OK);
+        cb(resp);
+    } catch (const std::exception& e) {
+        Json::Value err; err["error"] = std::string("cameraUpdateList failed: ") + e.what();
+        auto resp = HttpResponse::newHttpJsonResponse(err);
+        resp->setStatusCode(k500InternalServerError);
+        cb(resp);
+    }
 }

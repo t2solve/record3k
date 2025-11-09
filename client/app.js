@@ -23,6 +23,7 @@ class BugTrackerApp {
         // Page-specific initialization
         if (this.currentPage === 'cameras') {
             document.getElementById('refresh-btn')?.addEventListener('click', () => this.loadCameras());
+            document.getElementById('update-btn')?.addEventListener('click', () => this.updateCameraList());
             this.loadCameras();
         } else if (this.currentPage === 'records') {
             document.getElementById('refresh-records-btn')?.addEventListener('click', () => this.loadRecords());
@@ -280,7 +281,7 @@ class BugTrackerApp {
             };
             console.log('Sending to /do/record/start:', recordPayload);
             
-            const recordResponse = await fetch(`${API_BASE_URL}/do/record/start`, {
+            const recordResponse = await fetch(`${API_BASE_URL}/do/camera/record/start/${encodeURIComponent(camUID)}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(recordPayload)
@@ -339,20 +340,41 @@ class BugTrackerApp {
 
         try {
             const response = await fetch(`${API_BASE_URL}/info/cameras/list`);
-            
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-
             this.cameras = await response.json();
             this.renderCameras();
-            
         } catch (error) {
             console.error('Failed to load cameras:', error);
             errorEl.textContent = `Failed to load cameras: ${error.message}`;
             errorEl.style.display = 'block';
         } finally {
             loadingEl.style.display = 'none';
+        }
+    }
+
+    async updateCameraList() {
+        const updateBtn = document.getElementById('update-btn');
+        const originalText = updateBtn.textContent;
+        updateBtn.disabled = true;
+        updateBtn.textContent = '⏳ Updating...';
+        try {
+            const response = await fetch(`${API_BASE_URL}/do/camera/updatelist`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            // Optionally could read response body if it returns JSON summary
+            await this.loadCameras();
+        } catch (err) {
+            console.error('Failed to update camera list:', err);
+            alert(`Failed to update camera list: ${err.message}`);
+        } finally {
+            updateBtn.disabled = false;
+            updateBtn.textContent = originalText;
         }
     }
 
@@ -378,6 +400,14 @@ class BugTrackerApp {
                     <div class="detail-row">
                         <span class="label">MAC Address:</span>
                         <span class="value"><code>${this.escapeHtml(camera.macAddress)}</code></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Type:</span>
+                        <span class="value"><code>${this.escapeHtml(camera.cameraType || 'unknown')}</code></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Last seen:</span>
+                        <span class="value">${camera.datetimeLastSeen ? new Date(camera.datetimeLastSeen).toLocaleString() : 'N/A'}</span>
                     </div>
                 </div>
                 <div class="camera-actions">
@@ -406,7 +436,7 @@ class BugTrackerApp {
         if (!confirm(`Start calibration for camera ${camUID}?`)) return;
         
         try {
-            const response = await fetch(`${API_BASE_URL}/do/camera/${camUID}/calibrate`, {
+            const response = await fetch(`${API_BASE_URL}/do/camera/calibrate/${camUID}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ description: 'Web UI calibration' })

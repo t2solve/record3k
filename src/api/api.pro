@@ -18,7 +18,6 @@ SOURCES += \
     controllers/info_controller.cpp \
     controllers/docs_controller.cpp \
     controllers/cors_controller.cpp \
-    runtime/json_store.cpp \
     runtime/info_data_manager.cpp
 
 HEADERS += \
@@ -28,6 +27,13 @@ HEADERS += \
     include/api/controllers/info_controller.h \
     include/api/controllers/docs_controller.h \
     include/api/controllers/cors_controller.h \
-    include/api/runtime/json_store.h \
     include/api/runtime/info_data_manager.h
     
+# Ensure jsoncpp headers are visible to compile public headers that include <json/json.h>
+JSONCPP_PKG_OK = $$system(pkg-config --exists jsoncpp && echo yes || echo no)
+equals(JSONCPP_PKG_OK, yes) {
+    CONFIG += link_pkgconfig
+    PKGCONFIG += jsoncpp
+} else {
+    INCLUDEPATH += /usr/include/jsoncpp
+}

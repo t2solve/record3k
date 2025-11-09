@@ -37,6 +37,12 @@
           },
           "status": {
             "type": "string"
+          },
+          "datetimeLastSeen": {
+            "type": "string"
+          },
+          "cameraType": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -247,6 +253,9 @@
         "summary": "Trigger calibration"
       }
     },
+    "/do/camera/calibrate/{camUID}": {
+      "post": {"responses": {"202": {"description": "Accepted"}}, "summary": "Trigger calibration"}
+    },
     "/do/camera/{camUID}/pipelinetest": {
       "post": {
         "requestBody": {
@@ -274,6 +283,7 @@
         "summary": "Pipeline test record"
       }
     },
+    "/do/camera/pipelinetest/{camUID}": {"post": {"responses": {"202": {"description": "Accepted"}}, "summary": "Pipeline test record"}},
     "/do/record/start": {
       "post": {
         "requestBody": {
@@ -301,6 +311,8 @@
         "summary": "Start recording"
       }
     },
+    "/do/camera/record/start/{camUID}": {"post": {"responses": {"201": {"description": "Accepted"}}, "summary": "Start recording"}},
+  "/do/camera/updatelist": {"post": {"responses": {"200": {"description": "OK"}}, "summary": "Update & probe camera list"}},
     "/get/file/binary/{fileUID}": {
       "get": {
         "responses": {

@@ -29,21 +29,29 @@ private:
 class ModelFactory {
 public:
     // Construct validated models (normalize where sensible)
+    // UID generators (except cameraUID, which is external)
+    static std::string generateCalibrationUID();
+    static std::string generatePipelineUID();
+    static std::string generateRecordUID();
+    static std::string generateFileUID();
+    static std::string generateStudyUID();
+
     static StatusOr<api::CameraInfo> makeCameraInfo(
         std::string camUID,
         std::string macAddress,
         std::optional<std::string> description,
         std::string status);
 
+
     static StatusOr<api::PipelineInfo> makePipelineInfo(
-        std::string pipelineUID,
+        std::optional<std::string> pipelineUID,
         std::optional<std::string> description,
         std::string status,
         std::string dateBuild,
         std::string fileUID);
 
     static StatusOr<api::CalibrationInfo> makeCalibrationInfo(
-        std::string calibrationUID,
+        std::optional<std::string> calibrationUID,
         std::string cameraUID,
         std::optional<std::string> description,
         std::string status,
@@ -51,19 +59,19 @@ public:
         std::string fileUID);
 
     static StatusOr<api::FileInfo> makeFileInfo(
-        std::string fileUID,
+        std::optional<std::string> fileUID,
         std::string datetimeCreated,
         std::string status,
         std::optional<std::string> info);
 
     static StatusOr<api::StudyMetaInfo> makeStudyMetaInfo(
-        std::string studyInfoUID,
+        std::optional<std::string> studyInfoUID,
         std::optional<std::string> description,
         std::string individualScientificName,
         double weightInMg);
 
     static StatusOr<api::RecordInfo> makeRecordInfo(
-        std::string recordUID,
+        std::optional<std::string> recordUID,
         std::string calibrationUID,
         bool flagIsPipelineTest,
         std::string pipelineUID,

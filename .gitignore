@@ -3,6 +3,7 @@
 bin/*
 obj/* 
 vimbax/*
+data/*
 
 # Qt/qmake build artifacts
 *.o

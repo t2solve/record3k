@@ -40,12 +40,16 @@ struct CameraInfo {
     std::string macAddress;   // keeping conventional spelling
     std::optional<std::string> description;
     std::string status;
+    std::string datetimeLastSeen; // ISO-8601 string
+    std::string cameraType; // e.g., TYPE_CAM_VIMBA, TYPE_FILE
 
     Json::Value toJson() const {
         Json::Value j;
         j["camUID"] = camUID;
         j["macAddress"] = macAddress;
         j["status"] = status;
+        j["datetimeLastSeen"] = datetimeLastSeen;
+        if (!cameraType.empty()) j["cameraType"] = cameraType;
         setIfPresent(j, "description", description);
         return j;
     }
@@ -54,6 +58,8 @@ struct CameraInfo {
         x.camUID = j.get("camUID", "").asString();
         x.macAddress = j.get("macAddress", "").asString();
         x.status = j.get("status", "").asString();
+        x.datetimeLastSeen = j.get("datetimeLastSeen", "").asString();
+        x.cameraType = j.get("cameraType", "").asString();
         if (j.isMember("description")) x.description = j["description"].asString();
         return x;
     }

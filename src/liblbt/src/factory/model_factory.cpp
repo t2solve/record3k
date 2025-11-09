@@ -1,8 +1,30 @@
+// Ensure declarations are visible before definitions
 #include <liblbt/factory/model_factory.h>
+#include <random>
+#include <sstream>
 #include <algorithm>
 #include <cctype>
 
+namespace {
+std::string randomHex(size_t n) {
+    static thread_local std::mt19937_64 rng{std::random_device{}()};
+    static const char* hex = "0123456789abcdef";
+    std::string out;
+    out.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+        out += hex[rng() % 16];
+    }
+    return out;
+}
+}
+
 namespace lbt {
+
+std::string ModelFactory::generateCalibrationUID() { return "cal-" + randomHex(8); }
+std::string ModelFactory::generatePipelineUID()   { return "pipe-" + randomHex(8); }
+std::string ModelFactory::generateRecordUID()     { return "rec-" + randomHex(8); }
+std::string ModelFactory::generateFileUID()       { return "file-" + randomHex(8); }
+std::string ModelFactory::generateStudyUID()      { return "study-" + randomHex(8); }
 
 std::string ModelFactory::trim(std::string s) {
     auto notSpace = [](unsigned char c){ return !std::isspace(c); };
@@ -42,26 +64,36 @@ StatusOr<api::CameraInfo> ModelFactory::makeCameraInfo(std::string camUID, std::
     if (!isValidMac(macAddress)) return {"Invalid MAC address"};
     macAddress = normalizeMac(macAddress);
     if (!nonEmpty(status)) status = "unknown";
-    api::CameraInfo c{camUID, macAddress, description, status};
+    api::CameraInfo c{camUID, macAddress, description, status, "", ""}; // cameraType and datetimeLastSeen may be filled by manager
     return c;
 }
 StatusOr<api::CameraInfo> ModelFactory::fromJsonCamera(const Json::Value& j) {
-    return makeCameraInfo(j.get("camUID","" ).asString(), j.get("macAddress","" ).asString(),
-                          j.isMember("description")? std::optional<std::string>(j["description"].asString()) : std::nullopt,
-                          j.get("status","" ).asString());
+    auto r = makeCameraInfo(j.get("camUID","" ).asString(), j.get("macAddress","" ).asString(),
+                            j.isMember("description")? std::optional<std::string>(j["description"].asString()) : std::nullopt,
+                            j.get("status","" ).asString());
+    if (!r.ok()) return r;
+    // Inject cameraType if present or infer simple heuristic: if macAddress looks valid and starts with 'AA:' treat as TYPE_CAM_VIMBA else TYPE_FILE
+    std::string camType = j.get("cameraType", "").asString();
+    if (camType.empty()) {
+        if (isValidMac(r.value().macAddress)) camType = "TYPE_CAM_VIMBA"; else camType = "TYPE_FILE";
+    }
+    r.value().cameraType = camType;
+    // Preserve existing datetimeLastSeen if present
+    r.value().datetimeLastSeen = j.get("datetimeLastSeen", "").asString();
+    return r;
 }
 
 // PipelineInfo
-StatusOr<api::PipelineInfo> ModelFactory::makePipelineInfo(std::string pipelineUID, std::optional<std::string> description, std::string status, std::string dateBuild, std::string fileUID) {
-    pipelineUID = trim(pipelineUID);
+StatusOr<api::PipelineInfo> ModelFactory::makePipelineInfo(std::optional<std::string> pipelineUID, std::optional<std::string> description, std::string status, std::string dateBuild, std::string fileUID) {
+    std::string uid = pipelineUID && !pipelineUID->empty() ? trim(*pipelineUID) : generatePipelineUID();
     status = trim(status);
     dateBuild = trim(dateBuild);
     fileUID = trim(fileUID);
-    if (!isReasonableUID(pipelineUID)) return {"Invalid pipelineUID"};
+    if (!isReasonableUID(uid)) return {"Invalid pipelineUID"};
     if (!isIso8601Like(dateBuild)) return {"dateBuild not ISO8601-like"};
     if (!isReasonableUID(fileUID)) return {"Invalid fileUID"};
     if (!nonEmpty(status)) status = "unknown";
-    api::PipelineInfo p{pipelineUID, description, status, dateBuild, fileUID};
+    api::PipelineInfo p{uid, description, status, dateBuild, fileUID};
     return p;
 }
 StatusOr<api::PipelineInfo> ModelFactory::fromJsonPipeline(const Json::Value& j) {
@@ -73,18 +105,18 @@ StatusOr<api::PipelineInfo> ModelFactory::fromJsonPipeline(const Json::Value& j)
 }
 
 // CalibrationInfo
-StatusOr<api::CalibrationInfo> ModelFactory::makeCalibrationInfo(std::string calibrationUID, std::string cameraUID, std::optional<std::string> description, std::string status, std::string datetimeCreated, std::string fileUID) {
-    calibrationUID = trim(calibrationUID);
+StatusOr<api::CalibrationInfo> ModelFactory::makeCalibrationInfo(std::optional<std::string> calibrationUID, std::string cameraUID, std::optional<std::string> description, std::string status, std::string datetimeCreated, std::string fileUID) {
+    std::string uid = calibrationUID && !calibrationUID->empty() ? trim(*calibrationUID) : generateCalibrationUID();
     cameraUID = trim(cameraUID);
     status = trim(status);
     datetimeCreated = trim(datetimeCreated);
     fileUID = trim(fileUID);
-    if (!isReasonableUID(calibrationUID)) return {"Invalid calibrationUID"};
+    if (!isReasonableUID(uid)) return {"Invalid calibrationUID"};
     if (!isReasonableUID(cameraUID)) return {"Invalid cameraUID"};
     if (!isIso8601Like(datetimeCreated)) return {"datetimeCreated not ISO8601-like"};
     if (!isReasonableUID(fileUID)) return {"Invalid fileUID"};
     if (!nonEmpty(status)) status = "unknown";
-    api::CalibrationInfo c{calibrationUID, cameraUID, description, status, datetimeCreated, fileUID};
+    api::CalibrationInfo c{uid, cameraUID, description, status, datetimeCreated, fileUID};
     return c;
 }
 StatusOr<api::CalibrationInfo> ModelFactory::fromJsonCalibration(const Json::Value& j) {
@@ -97,14 +129,14 @@ StatusOr<api::CalibrationInfo> ModelFactory::fromJsonCalibration(const Json::Val
 }
 
 // FileInfo
-StatusOr<api::FileInfo> ModelFactory::makeFileInfo(std::string fileUID, std::string datetimeCreated, std::string status, std::optional<std::string> info) {
-    fileUID = trim(fileUID);
+StatusOr<api::FileInfo> ModelFactory::makeFileInfo(std::optional<std::string> fileUID, std::string datetimeCreated, std::string status, std::optional<std::string> info) {
+    std::string uid = fileUID && !fileUID->empty() ? trim(*fileUID) : generateFileUID();
     datetimeCreated = trim(datetimeCreated);
     status = trim(status);
-    if (!isReasonableUID(fileUID)) return {"Invalid fileUID"};
+    if (!isReasonableUID(uid)) return {"Invalid fileUID"};
     if (!isIso8601Like(datetimeCreated)) return {"datetimeCreated not ISO8601-like"};
     if (!nonEmpty(status)) status = "available";
-    api::FileInfo f{fileUID, datetimeCreated, status, info};
+    api::FileInfo f{uid, datetimeCreated, status, info};
     return f;
 }
 StatusOr<api::FileInfo> ModelFactory::fromJsonFileInfo(const Json::Value& j) {
@@ -115,13 +147,13 @@ StatusOr<api::FileInfo> ModelFactory::fromJsonFileInfo(const Json::Value& j) {
 }
 
 // StudyMetaInfo
-StatusOr<api::StudyMetaInfo> ModelFactory::makeStudyMetaInfo(std::string studyInfoUID, std::optional<std::string> description, std::string individualScientificName, double weightInMg) {
-    studyInfoUID = trim(studyInfoUID);
+StatusOr<api::StudyMetaInfo> ModelFactory::makeStudyMetaInfo(std::optional<std::string> studyInfoUID, std::optional<std::string> description, std::string individualScientificName, double weightInMg) {
+    std::string uid = studyInfoUID && !studyInfoUID->empty() ? trim(*studyInfoUID) : generateStudyUID();
     individualScientificName = trim(individualScientificName);
-    if (!isReasonableUID(studyInfoUID)) return {"Invalid studyInfoUID"};
+    if (!isReasonableUID(uid)) return {"Invalid studyInfoUID"};
     if (individualScientificName.empty()) return {"individualScientificName required"};
     if (weightInMg < 0.0) return {"weightInMg negative"};
-    api::StudyMetaInfo s{studyInfoUID, description, individualScientificName, weightInMg};
+    api::StudyMetaInfo s{uid, description, individualScientificName, weightInMg};
     return s;
 }
 StatusOr<api::StudyMetaInfo> ModelFactory::fromJsonStudy(const Json::Value& j) {
@@ -132,8 +164,8 @@ StatusOr<api::StudyMetaInfo> ModelFactory::fromJsonStudy(const Json::Value& j) {
 }
 
 // RecordInfo
-StatusOr<api::RecordInfo> ModelFactory::makeRecordInfo(std::string recordUID, std::string calibrationUID, bool flagIsPipelineTest, std::string pipelineUID, std::string studyUID, std::string status, double durationInSeconds, std::string datetimeStart, std::string datetimeEnd, std::string fileUID) {
-    recordUID = trim(recordUID);
+StatusOr<api::RecordInfo> ModelFactory::makeRecordInfo(std::optional<std::string> recordUID, std::string calibrationUID, bool flagIsPipelineTest, std::string pipelineUID, std::string studyUID, std::string status, double durationInSeconds, std::string datetimeStart, std::string datetimeEnd, std::string fileUID) {
+    std::string uid = recordUID && !recordUID->empty() ? trim(*recordUID) : generateRecordUID();
     calibrationUID = trim(calibrationUID);
     pipelineUID = trim(pipelineUID);
     studyUID = trim(studyUID);
@@ -141,7 +173,7 @@ StatusOr<api::RecordInfo> ModelFactory::makeRecordInfo(std::string recordUID, st
     datetimeStart = trim(datetimeStart);
     datetimeEnd = trim(datetimeEnd);
     fileUID = trim(fileUID);
-    if (!isReasonableUID(recordUID)) return {"Invalid recordUID"};
+    if (!isReasonableUID(uid)) return {"Invalid recordUID"};
     if (!isReasonableUID(calibrationUID)) return {"Invalid calibrationUID"};
     if (!isReasonableUID(pipelineUID)) return {"Invalid pipelineUID"};
     if (!isReasonableUID(studyUID)) return {"Invalid studyUID"};
@@ -150,7 +182,7 @@ StatusOr<api::RecordInfo> ModelFactory::makeRecordInfo(std::string recordUID, st
     if (!isReasonableUID(fileUID)) return {"Invalid fileUID"};
     if (durationInSeconds < 0.0) return {"duration negative"};
     if (!nonEmpty(status)) status = "unknown";
-    api::RecordInfo r{recordUID, calibrationUID, flagIsPipelineTest, pipelineUID, studyUID, status, durationInSeconds, datetimeStart, datetimeEnd, fileUID};
+    api::RecordInfo r{uid, calibrationUID, flagIsPipelineTest, pipelineUID, studyUID, status, durationInSeconds, datetimeStart, datetimeEnd, fileUID};
     return r;
 }
 StatusOr<api::RecordInfo> ModelFactory::fromJsonRecord(const Json::Value& j) {
