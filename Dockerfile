@@ -3,6 +3,8 @@
 # RUN: docker run  --gpus all  --network=host  recorder-3k
 # login: docker run --network=host  --gpus all  -it recorder-3k bash
 # podman run --rm -it --name recorder-3k --gpus all --network=host recorder-3k bash
+# podman run --rm -it --name recorder-3k --gpus nvidia.com/all --network=host recorder-3k bash
+# 
 # podman run --rm -it --name recorder-3k \
 #  --network=host -v "$PWD":/app -w /app \
 # needed: export LD_LIBRARY_PATH=/app/bin:$LD_LIBRARY_PATH
@@ -38,7 +40,7 @@ RUN ls -al /app/src/liblbt/include/liblbt
 #RUN apt-get update && apt-get install -y gdb
 
 #build test 
-RUN cd /app/ && qmake6 CONFIG+=cuda CONFIG+=vimbax record3k.pro 
+RUN cd /app/ && qmake6 CONFIG+=cuda CONFIG+=api CONFIG+=vimbax record3k.pro 
 RUN cd /app/ && make -j 6
 
 # install the Vimba SDK drivers 
@@ -55,6 +57,15 @@ RUN export CWD="/app/vimbax/cti" && \
     echo "export GENICAM_GENTL64_PATH=:$CWD" >> /etc/profile.d/gentlpath.sh
 
 ENV GENICAM_GENTL64_PATH=:/app/vimbax/cti
+
+# add vimba lib path to LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/app/vimbax/api/lib/:$LD_LIBRARY_PATH
+
+# add own lib path to LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH
+
+# copy default config to bin
+RUN cp /app/config/drogon.config.json /app/bin/drogon.config.json
 
 # Run the application
 CMD ["/app/bin/test3recorder", "/app/bin/data"]

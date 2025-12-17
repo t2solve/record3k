@@ -108,9 +108,65 @@ static void PrintVimbaSetupDiagnostics()
     std::cout << "[vimba] Version: " << versionInfo.major << '.' << versionInfo.minor << '.' << versionInfo.patch << "\n";
 
     VmbErrorType err = sys.Startup();
+    bool fallbackTried = false;
     if (err != VmbErrorSuccess) {
-        std::cerr << "[vimba] Startup failed: " << err << "\n";
-        return;
+        std::cerr << "[vimba] Initial Startup() failed: " << err << "\n";
+    }
+    if (err != VmbErrorSuccess) {
+        // Attempt explicit path list startup using discovered CTI files
+        std::vector<std::filesystem::path> candidateCti;
+        // Current working directory
+        for (auto& e : std::filesystem::directory_iterator(std::filesystem::current_path())) {
+            if (e.is_regular_file() && e.path().extension() == ".cti") candidateCti.push_back(e.path());
+        }
+        // Local vimbax/cti directories
+        for (auto p : { std::filesystem::path("vimbax/cti"), 
+            std::filesystem::path("../vimbax/cti"), 
+            std::filesystem::path("../../vimbax/cti"),
+            std::filesystem::path("."),}) {
+            if (std::filesystem::exists(p)) {
+                for (auto& e : std::filesystem::directory_iterator(p)) {
+                    if (e.is_regular_file() && e.path().extension() == ".cti") candidateCti.push_back(e.path());
+                }
+            }
+        }
+        if (!candidateCti.empty()) {
+            sys.Shutdown(); // ensure clean state before second attempt
+            std::string pathList = ";"; // allow initial empty segment
+            for (auto& c : candidateCti) {
+                pathList += c.parent_path().string();
+                pathList += ';';
+                pathList += c.string();
+                pathList += ';';
+            }
+            std::cout << "[vimba-explicit] Trying Startup(pathList='" << pathList << "')" << "\n";
+            err = sys.Startup(pathList.c_str());
+            fallbackTried = true;
+            if (err != VmbErrorSuccess) {
+                std::cerr << "[vimba-explicit] Startup with explicit path list failed: " << err << "\n";
+                
+                //we print error by name 
+                switch(err) {
+                    case VmbErrorApiNotStarted:
+                        std::cerr << "[vimba-explicit] Error: Vimba API not started." << "\n";
+                        break;
+                    case VmbErrorNotFound:
+                        std::cerr << "[vimba-explicit] Error: No transport layers found." << "\n";
+                        break;
+                    case VmbErrorResources:
+                        std::cerr << "[vimba-explicit] Error: Insufficient resources to start Vimba." << "\n";
+                        break;
+                    default:
+                        std::cerr << "[vimba-explicit] Error: Unknown error code." << "\n";
+                        break;
+                }
+
+                return; // cannot proceed further
+            }
+        } else {
+            std::cerr << "[vimba] No .cti files found for explicit fallback attempt." << "\n";
+            return;
+        }
     }
 
     VmbCPP::TransportLayerPtrVector tls;
@@ -143,7 +199,7 @@ static void PrintVimbaSetupDiagnostics()
     VmbCPP::CameraPtrVector cameras;
     err = sys.GetCameras(cameras);
     if (err == VmbErrorSuccess) {
-        std::cout << "[vimba] Cameras: " << cameras.size() << "\n";
+        std::cout << "[vimba] Cameras: " << cameras.size() << (fallbackTried ? " (after explicit path)" : "") << "\n";
         for (const auto& cam : cameras) {
             std::string id, name, model, serial, ifaceId;
             if (cam->GetID(id) != VmbErrorSuccess) id = "<id-error>";

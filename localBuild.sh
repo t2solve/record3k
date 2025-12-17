@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# need debian packages:
+# pkg-config libdrogon-dev qt6-base-dev qmake6 
+
 # run : e.g. /localBuild.sh --no-cuda --no-vimbax -j 8 
 # Simple local builder for the record3k project
 # - Generates build files in ./build

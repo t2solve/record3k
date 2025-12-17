@@ -7,8 +7,8 @@ CONFIG += ordered
 SUBDIRS = \
     src/liblbt \
     src/test3 \
-    src/pipelineviewer \
-    src/debugcameraload \
+    src/pipelineviewer #\
+    #src/debugcameraload \
 
     
 #define deps

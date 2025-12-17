@@ -4,6 +4,9 @@ TEMPLATE = app
 TARGET = apiserver
 DESTDIR = ../../bin
 
+# uncomment for use MOCK
+DEFINES += DEBUG_FLAG_MOCK
+
 # Use liblbt headers and link to the built .so
 INCLUDEPATH += $$PWD/../liblbt/include
 LIBS += -L$$OUT_PWD/../../lib -L$$PWD/../../lib -llbt -Wl,-rpath,'$$ORIGIN/../lib'
