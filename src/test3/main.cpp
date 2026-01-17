@@ -112,8 +112,8 @@ std::optional<FilterConfig> loadCameraCalibration(const std::string& xmlPath,
 int main(int argc, char* argv[])
 {
       // Defaults: image directory and calibration file
-    std::string image_dir = "build/bin/data-frames";
-    std::string calib_xml = "build/bin/camera_calibration.xml";
+    std::string image_dir = "data-frames";
+    std::string calib_xml = "camera_calibration.xml";
     // Positional overrides if provided
     if (argc >= 2) image_dir = argv[1];
     if (argc >= 3) calib_xml = argv[2];
@@ -238,14 +238,14 @@ int main(int argc, char* argv[])
     pipeConfig.configs = configs;
     pipeConfig.mode = mode;
 
-    // we save the pipeline configuration to XML for future use
-    //PipelineConfigLoader::saveToXML("build/bin/pipeline_test3_config.xml", pipeConfig);
-    // Load pipeline from XML
-//    //Configure processing pipeline
-//    auto pipeConfig = PipelineConfigLoader::loadFromXML("config.xml");
-//    //ProcessingMode mode = pipeConfig.mode;
-//       // Process the image
-//    qDebug() << "Processing pipeline with" << pipeConfig.steps.size() << "steps...";
+    //we save the pipeline configuration to XML for future use
+    PipelineConfigLoader::saveToXML("pipeline_test3_config.xml", pipeConfig);
+    //Load pipeline from XML
+    //Configure processing pipeline
+    //auto pipeConfig = PipelineConfigLoader::loadFromXML("config.xml");
+    //ProcessingMode mode = pipeConfig.mode;
+      // Process the image
+    //qDebug() << "Processing pipeline with" << pipeConfig.steps.size() << "steps...";
 
     // Set desired frequency (Hz)
     double frequency = 10.0; // 10 frames per second

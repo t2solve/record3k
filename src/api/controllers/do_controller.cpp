@@ -1,6 +1,7 @@
 #include <api/controllers/do_controller.h>
 #include <drogon/drogon.h>
 #include <api/runtime/info_data_manager.h>
+#include <api/app_config.h>
 #include <liblbt/camera_manager.h>
 #include <ctime>
 
@@ -53,7 +54,8 @@ void DoController::cameraRecordStop(const HttpRequestPtr&, std::function<void (c
 void DoController::cameraUpdateList(const HttpRequestPtr&, std::function<void (const HttpResponsePtr &)> && cb) {
     // Use CameraManager to (re)load and probe cameras under data/info/cameras
     try {
-        lbt::CameraManager mgr(std::filesystem::path("data/info/cameras"));
+        auto cameraPath = api::AppConfig::instance().getInfoPath("cameras");
+        lbt::CameraManager mgr(cameraPath);
         mgr.load();
         mgr.probeAll();
         // Return the refreshed list from the store via InfoDataManager

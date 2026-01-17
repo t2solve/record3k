@@ -20,6 +20,7 @@ public:
     static std::shared_ptr<ProcessStep> createMassCenterOverlay(ProcessingMode mode = ProcessingMode::CPU_ONLY);
     static std::shared_ptr<ProcessStep> createMorphologyClose(ProcessingMode mode = ProcessingMode::CUDA_PREFERRED);
     static std::shared_ptr<ProcessStep> createProjectPointTo2DSurface(ProcessingMode mode= ProcessingMode::CPU_ONLY);
+    static std::shared_ptr<ProcessStep> createFrameWriter(ProcessingMode mode = ProcessingMode::CPU_ONLY);
     
     // Background subtraction
     static std::shared_ptr<ProcessStep> createBackgroundSubtractionMOG2(ProcessingMode mode = ProcessingMode::CUDA_PREFERRED);

@@ -14,6 +14,10 @@ public:
     // Returns true and fills 'out' if present; false otherwise
     bool getParameter(const std::string& key, cv::Mat& out) const;
     
+    // Overloads for string parameters (e.g., file paths, output directories)
+    void setParameter(const std::string& key, const std::string& value);
+    std::string getParameter(const std::string& key, const std::string& defaultValue) const;
+    
     // Method to get all parameters (useful for XML serialization)
     const std::map<std::string, double>& getAllParameters() const;
     
@@ -29,5 +33,6 @@ public:
 private:
     std::map<std::string, double> parameters;
     std::map<std::string, cv::Mat> parametersMat;
+    std::map<std::string, std::string> parametersString;
     
 };

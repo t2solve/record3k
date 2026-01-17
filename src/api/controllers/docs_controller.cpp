@@ -80,14 +80,14 @@ Json::Value buildSpec() {
 
     // Add endpoints
     addPost("/add/pipeline","Add pipeline","PipelineInfo",201);
-    addPost("/add/studyMetaInfo","Add study meta info","StudyMetaInfo",201);
+    addPost("/add/study_meta_info","Add study meta info","StudyMetaInfo",201);
 
     // Do endpoints
     addPost("/do/camera/calibrate/{camUID}","Trigger calibration","CalibrationInfo",202);
-    addPost("/do/camera/pipelinetest/{camUID}","Pipeline test record","RecordInfo",202);
+    addPost("/do/camera/pipeline_test/{camUID}","Pipeline test record","RecordInfo",202);
     addPost("/do/camera/record/start/{camUID}","Start recording","RecordInfo",201);
     addPost("/do/camera/record/{recordUID}/stop","Stop recording","RecordInfo",200);
-    addPost("/do/camera/updatelist","Update & probe camera list","CameraInfo",200);
+    addPost("/do/camera/update_list","Update & probe camera list","CameraInfo",200);
 
     root["paths"] = paths;
     root["components"] = components;

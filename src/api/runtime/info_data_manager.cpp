@@ -1,4 +1,5 @@
 #include <api/runtime/info_data_manager.h>
+#include <api/app_config.h>
 #include <iostream>
 #include <mutex>
 #include <liblbt/factory/model_factory.h>
@@ -53,7 +54,8 @@ std::optional<Json::Value> InfoDataManager::get(const std::string& category, con
 InfoDataManager& infoDataManager() {
     std::lock_guard lk(gInitMtx);
     if (!gInfoMgr) {
-        gInfoMgr = std::make_unique<InfoDataManager>(std::filesystem::path("data/info"));
+        auto infoPath = api::AppConfig::instance().getDataRootPath() / "info";
+        gInfoMgr = std::make_unique<InfoDataManager>(infoPath);
         gInfoMgr->start();
     }
     return *gInfoMgr;

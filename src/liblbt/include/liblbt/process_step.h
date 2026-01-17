@@ -32,6 +32,7 @@ enum class FilterType {
     MASS_CENTER_OVERLAY,
     MORPHOLOGY_CLOSE, 
     PROJECT_POINT_TO_2D_SURFACE,
+    FRAME_WRITER,
     CUSTOM
 };
 

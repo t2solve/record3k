@@ -4,7 +4,7 @@
 class CorsController : public drogon::HttpController<CorsController> {
 public:
     METHOD_LIST_BEGIN
-    ADD_METHOD_TO(CorsController::optionsSimple, "/add/studyMetaInfo", drogon::Options);
+    ADD_METHOD_TO(CorsController::optionsSimple, "/add/study_meta_info", drogon::Options);
     ADD_METHOD_TO(CorsController::optionsSimple, "/add/pipeline", drogon::Options);
     ADD_METHOD_TO(CorsController::optionsSimple, "/do/record/start", drogon::Options);
     ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/{1}/calibrate", drogon::Options);

@@ -4,7 +4,8 @@
   ],
   "app": {
     "thread_number": 0,
-    "enable_run_as_daemon": false
+    "enable_run_as_daemon": false,
+    "data_root_path": "data"
   },
   "swagger": {
     "enable": true,

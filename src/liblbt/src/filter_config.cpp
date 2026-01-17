@@ -26,17 +26,28 @@ const std::map<std::string, double>& FilterConfig::getAllParameters() const {
     return parameters;
 }
 
+void FilterConfig::setParameter(const std::string& key, const std::string& value) {
+    parametersString[key] = value;
+}
+
+std::string FilterConfig::getParameter(const std::string& key, const std::string& defaultValue) const {
+    auto it = parametersString.find(key);
+    return (it != parametersString.end()) ? it->second : defaultValue;
+}
+
 bool FilterConfig::hasParameter(const std::string& key) const {
     if (parameters.find(key) != parameters.end()) return true;
     if (parametersMat.find(key) != parametersMat.end()) return true;
+    if (parametersString.find(key) != parametersString.end()) return true;
     return false;
 }
 
 void FilterConfig::clearParameters() {
     parameters.clear();
     parametersMat.clear();
+    parametersString.clear();
 }
 
 size_t FilterConfig::getParameterCount() const {
-    return parameters.size() + parametersMat.size();
+    return parameters.size() + parametersMat.size() + parametersString.size();
 }

@@ -2,6 +2,7 @@
 // Only build/run API server when API_ENABLED is defined (CONFIG+=api)
 #ifdef API_ENABLED
 #include <drogon/drogon.h>
+#include <api/app_config.h>
 #endif
 
 #include <QCoreApplication>
@@ -47,6 +48,20 @@ int main(int argc, char* argv[])
     }
     if (drogon::app().getThreadNum() == 0) {
         drogon::app().setThreadNum(std::thread::hardware_concurrency());
+    }
+    
+    // Load custom data_root_path from config
+    try {
+        auto customConfig = drogon::app().getCustomConfig();
+        if (!customConfig.empty() && customConfig.isMember("data_root_path")) {
+            std::string dataPath = customConfig["data_root_path"].asString();
+            api::AppConfig::instance().setDataRootPath(dataPath);
+            std::cout << "[api] Data root path set to: " << dataPath << std::endl;
+        } else {
+            std::cout << "[api] Using default data root path: data" << std::endl;
+        }
+    } catch (const std::exception &e) {
+        std::cout << "[api] Could not load custom config, using default data path: " << e.what() << std::endl;
     }
     
     // Enable CORS for browser access from different origins
