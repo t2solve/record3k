@@ -227,6 +227,7 @@ std::optional<std::string> ActionManager::startCalibration(
     double durationInSeconds,
     const std::string& description) {
 
+    (void)description; // Mark as intentionally unused for now
     //TODO check bound for durationInSeconds
     
     std::lock_guard lock(mutex_);
@@ -260,16 +261,30 @@ std::optional<std::string> ActionManager::startCalibration(
     // Create appropriate frame source based on camera type
     if (cam->cameraType == "TYPE_CAM_VIMBA") {
 #ifdef VIMBAX_ENABLED
-        session->frameSource = std::make_unique<VimbaXFrameSource>();
-        if (!session->frameSource->configure(cam->macAddress)) {
-            std::cerr << "[ActionManager] Failed to configure VimbaX source for " << camUID << std::endl;
+        // VimbaXFrameSource constructor: VimbaXFrameSource(serial, mac, flag)
+        session->frameSource = std::make_unique<VimbaXFrameSource>(camUID, cam->macAddress, false);
+        if (!session->frameSource->isReady()) {
+            std::cerr << "[ActionManager] Failed to initialize VimbaX source for " << camUID << std::endl;
             return std::nullopt;
         }
-        return session->frameSource;
 #else
         std::cerr << "[ActionManager] VimbaX not enabled in build" << std::endl;
-        return std::nullopt;;
+        return std::nullopt;
 #endif
+    } else if (cam->cameraType == "TYPE_FILE") {
+        std::filesystem::path imgDir = recordsDir_.parent_path().parent_path() / "files" / "bin" / camUID;
+        if (!std::filesystem::exists(imgDir)) {
+            std::cerr << "[ActionManager] Image directory not found: " << imgDir << std::endl;
+            return std::nullopt;
+        }
+        session->frameSource = std::make_unique<DiskImageFrameSource>(imgDir.string(), "*.jpg");
+        if (!session->frameSource->isReady()) {
+            std::cerr << "[ActionManager] Failed to initialize disk image source for " << camUID << std::endl;
+            return std::nullopt;
+        }
+    } else {
+        std::cerr << "[ActionManager] Unknown camera type: " << cam->cameraType << std::endl;
+        return std::nullopt;
     }
 
     // // Create frame source and pipeline

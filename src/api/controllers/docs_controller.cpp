@@ -33,8 +33,36 @@ Json::Value buildSpec() {
     components["schemas"] = schemas;
 
     Json::Value paths(Json::objectValue);
+    
+    // Helper to extract path parameters from a path like "/do/camera/test/{camUID}"
+    auto extractPathParams = [](const std::string &path) {
+        Json::Value params(Json::arrayValue);
+        size_t start = 0;
+        while ((start = path.find('{', start)) != std::string::npos) {
+            size_t end = path.find('}', start);
+            if (end != std::string::npos) {
+                std::string paramName = path.substr(start + 1, end - start - 1);
+                Json::Value param;
+                param["name"] = paramName;
+                param["in"] = "path";
+                param["required"] = true;
+                param["schema"]["type"] = "string";
+                params.append(param);
+                start = end + 1;
+            } else {
+                break;
+            }
+        }
+        return params;
+    };
+    
     auto addGet = [&](const std::string &path, const std::string &summary, const std::string &respSchema){
         paths[path]["get"]["summary"] = summary;
+        // Add path parameters
+        Json::Value params = extractPathParams(path);
+        if (!params.empty()) {
+            paths[path]["get"]["parameters"] = params;
+        }
         paths[path]["get"]["responses"]["200"]["description"] = "OK";
         if(!respSchema.empty()) {
             paths[path]["get"]["responses"]["200"]["content"]["application/json"]["schema"] = Json::objectValue;
@@ -51,6 +79,11 @@ Json::Value buildSpec() {
     };
     auto addPost = [&](const std::string &path, const std::string &summary, const std::string &respSchema, int code){
         paths[path]["post"]["summary"] = summary;
+        // Add path parameters
+        Json::Value params = extractPathParams(path);
+        if (!params.empty()) {
+            paths[path]["post"]["parameters"] = params;
+        }
         std::string codeStr = std::to_string(code);
         paths[path]["post"]["responses"][codeStr]["description"] = "Accepted";
         if(!respSchema.empty()) {
@@ -87,7 +120,7 @@ Json::Value buildSpec() {
     addPost("/do/camera/pipeline_test/{camUID}","Pipeline test record","RecordInfo",202);
     addPost("/do/camera/record/start/{camUID}","Start recording","RecordInfo",201);
     addPost("/do/camera/record/{recordUID}/stop","Stop recording","RecordInfo",200);
-    addPost("/do/camera/update_list","Update & probe camera list","CameraInfo",200);
+    addPost("/do/camera/test/{camUID}","Test camera connectivity","",200);
 
     root["paths"] = paths;
     root["components"] = components;

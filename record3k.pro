@@ -16,7 +16,6 @@ src/test3.depends = src/liblbt
 src/pipelineviewer.depends = src/liblbt
 src/debugcameraload.depends = src/liblbt
 
-#src/api.depends = src/liblbt
 
 # Build API app only when CONFIG+=api is set
 contains(CONFIG, api) {

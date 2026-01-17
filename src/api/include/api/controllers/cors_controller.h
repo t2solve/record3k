@@ -9,6 +9,7 @@ public:
     ADD_METHOD_TO(CorsController::optionsSimple, "/do/record/start", drogon::Options);
     ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/{1}/calibrate", drogon::Options);
     ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/{1}/pipeline/test", drogon::Options);
+    ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/test/{1}", drogon::Options);
     ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/record/{1}/stop", drogon::Options);
     METHOD_LIST_END
 

@@ -1,10 +1,15 @@
 ﻿#include <api/controllers/info_controller.h>
 #include <drogon/drogon.h>
+#include <api/logging.h>
+#include <cstdlib>
+
 #ifdef DEBUG_FLAG_MOCK
 #include <string>
 #else
 #include <api/runtime/info_data_manager.h>
 #endif
+
+
 
 using namespace drogon;
 using namespace api;
@@ -25,7 +30,11 @@ void InfoController::listCameras(const HttpRequestPtr&, std::function<void (cons
     arr.append(mockCamera("cam-002"));
     cb(HttpResponse::newHttpJsonResponse(arr));
 #else
-    cb(HttpResponse::newHttpJsonResponse(infoDataManager().list("cameras")));
+    LOG_INFO << "Listing cameras via InfoDataManager";
+    // Use InfoDataManager to list cameras - validates via ModelFactory
+    Json::Value arr = infoDataManager().list("cameras");
+    LOG_VERBOSE << "Retrieved " << arr.size() << " camera(s)";
+    cb(HttpResponse::newHttpJsonResponse(arr));
 #endif
 }
 

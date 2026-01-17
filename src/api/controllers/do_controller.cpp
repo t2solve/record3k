@@ -1,7 +1,7 @@
 #include <api/controllers/do_controller.h>
 #include <drogon/drogon.h>
 #include <api/runtime/info_data_manager.h>
-#include <api/app_config.h>
+#include <api/runtime/app_config.h>
 #include <liblbt/camera_manager.h>
 #include <ctime>
 
@@ -50,21 +50,88 @@ void DoController::cameraRecordStop(const HttpRequestPtr&, std::function<void (c
     cb(resp);
 }
 
-// New endpoint to trigger camera list refresh
-void DoController::cameraUpdateList(const HttpRequestPtr&, std::function<void (const HttpResponsePtr &)> && cb) {
-    // Use CameraManager to (re)load and probe cameras under data/info/cameras
+// Test a specific camera by UID
+void DoController::cameraTest(const HttpRequestPtr&, std::function<void (const HttpResponsePtr &)> && cb, const std::string &camUID) {
     try {
         auto cameraPath = api::AppConfig::instance().getInfoPath("cameras");
         lbt::CameraManager mgr(cameraPath);
         mgr.load();
-        mgr.probeAll();
-        // Return the refreshed list from the store via InfoDataManager
-        auto arr = infoDataManager().list("cameras");
-        auto resp = HttpResponse::newHttpJsonResponse(arr);
+        
+        // Get VimbaX configuration
+        std::string vimbaxCtiPath = api::AppConfig::instance().getVimbaxTransportLayerPath();
+        LOG_DEBUG << "[DoController] Retrieved VimbaX CTI path: '" << vimbaxCtiPath << "'";
+        
+        // Get camera info by UID
+        auto camInfo = mgr.get(camUID);
+        if (!camInfo) {
+            Json::Value err; 
+            err["error"] = "Camera not found: " + camUID;
+            auto resp = HttpResponse::newHttpJsonResponse(err);
+            resp->setStatusCode(k404NotFound);
+            cb(resp);
+            return;
+        }
+        
+        // Test the camera
+        lbt::CameraTestResult testResult = mgr.testCamera(*camInfo, vimbaxCtiPath);
+        bool success = (testResult == lbt::CameraTestResult::SUCCESS);
+        
+        // Map enum to string for response
+        std::string resultStr;
+        std::string errorDetail;
+        switch (testResult) {
+            case lbt::CameraTestResult::SUCCESS:
+                resultStr = "online";
+                break;
+            case lbt::CameraTestResult::ERROR_NOT_FOUND:
+                resultStr = "offline";
+                errorDetail = "Camera not found or not connected";
+                break;
+            case lbt::CameraTestResult::ERROR_NOT_READY:
+                resultStr = "offline";
+                errorDetail = "Camera found but not ready";
+                break;
+            case lbt::CameraTestResult::ERROR_NO_FRAME:
+                resultStr = "offline";
+                errorDetail = "Camera ready but cannot get frame";
+                break;
+            case lbt::CameraTestResult::ERROR_PATH_NOT_EXIST:
+                resultStr = "offline";
+                errorDetail = "File path does not exist";
+                break;
+            case lbt::CameraTestResult::ERROR_EXCEPTION:
+                resultStr = "offline";
+                errorDetail = "Exception occurred during test";
+                break;
+            case lbt::CameraTestResult::ERROR_NOT_BUILT:
+                resultStr = "offline";
+                errorDetail = "Required feature not built (e.g., VimbaX disabled)";
+                break;
+            case lbt::CameraTestResult::ERROR_UNKNOWN_TYPE:
+                resultStr = "offline";
+                errorDetail = "Unknown camera type";
+                break;
+            default:
+                resultStr = "offline";
+                errorDetail = "Unknown error";
+                break;
+        }
+        
+        // Prepare response
+        Json::Value result;
+        result["camUID"] = camUID;
+        result["testResult"] = resultStr;
+        result["success"] = success;
+        if (!errorDetail.empty()) {
+            result["errorDetail"] = errorDetail;
+        }
+        
+        auto resp = HttpResponse::newHttpJsonResponse(result);
         resp->setStatusCode(k200OK);
         cb(resp);
     } catch (const std::exception& e) {
-        Json::Value err; err["error"] = std::string("cameraUpdateList failed: ") + e.what();
+        Json::Value err; 
+        err["error"] = std::string("Camera test failed: ") + e.what();
         auto resp = HttpResponse::newHttpJsonResponse(err);
         resp->setStatusCode(k500InternalServerError);
         cb(resp);

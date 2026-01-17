@@ -23,7 +23,6 @@ class BugTrackerApp {
         // Page-specific initialization
         if (this.currentPage === 'cameras') {
             document.getElementById('refresh-btn')?.addEventListener('click', () => this.loadCameras());
-            document.getElementById('update-btn')?.addEventListener('click', () => this.updateCameraList());
             this.loadCameras();
         } else if (this.currentPage === 'records') {
             document.getElementById('refresh-records-btn')?.addEventListener('click', () => this.loadRecords());
@@ -354,30 +353,6 @@ class BugTrackerApp {
         }
     }
 
-    async updateCameraList() {
-        const updateBtn = document.getElementById('update-btn');
-        const originalText = updateBtn.textContent;
-        updateBtn.disabled = true;
-        updateBtn.textContent = '⏳ Updating...';
-        try {
-            const response = await fetch(`${API_BASE_URL}/do/camera/updatelist`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            // Optionally could read response body if it returns JSON summary
-            await this.loadCameras();
-        } catch (err) {
-            console.error('Failed to update camera list:', err);
-            alert(`Failed to update camera list: ${err.message}`);
-        } finally {
-            updateBtn.disabled = false;
-            updateBtn.textContent = originalText;
-        }
-    }
-
     renderCameras() {
         const cameraListEl = document.getElementById('camera-list');
         
@@ -411,8 +386,8 @@ class BugTrackerApp {
                     </div>
                 </div>
                 <div class="camera-actions">
-                    <button class="btn-action" onclick="app.viewCamera('${this.escapeHtml(camera.camUID)}')">
-                        📷 View Details
+                    <button class="btn-action" onclick="app.testCamera('${this.escapeHtml(camera.camUID)}')">
+                        🧪 Test
                     </button>
                     <button class="btn-action" onclick="app.calibrateCamera('${this.escapeHtml(camera.camUID)}')">
                         🎯 Calibrate
@@ -428,8 +403,37 @@ class BugTrackerApp {
         return div.innerHTML;
     }
 
-    async viewCamera(camUID) {
-        alert(`View details for camera: ${camUID}\n(Feature coming soon)`);
+    async testCamera(camUID) {
+        if (!confirm(`Test camera ${camUID} connectivity?`)) return;
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/do/camera/test/${camUID}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                const status = result.success ? '✓ ONLINE' : '✗ OFFLINE';
+                let message = `Camera Test Result\n\n`;
+                message += `Camera: ${camUID}\n`;
+                message += `Status: ${status}\n`;
+                message += `Result: ${result.testResult}`;
+                
+                // Add error detail if present
+                if (result.errorDetail) {
+                    message += `\n\nError Details:\n${result.errorDetail}`;
+                }
+                
+                alert(message);
+                // Reload cameras to reflect any status changes
+                this.loadCameras();
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (error) {
+            alert(`Failed to test camera: ${error.message}`);
+        }
     }
 
     async calibrateCamera(camUID) {

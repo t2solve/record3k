@@ -5,11 +5,14 @@ TARGET = apiserver
 DESTDIR = ../../bin
 
 # uncomment for use MOCK
-DEFINES += DEBUG_FLAG_MOCK
+DEFINES += API_ENABLED
+
+# uncomment for use MOCK
+#DEFINES += DEBUG_FLAG_MOCK
 
 # Use liblbt headers and link to the built .so
 INCLUDEPATH += $$PWD/../liblbt/include
-LIBS += -L$$OUT_PWD/../../lib -L$$PWD/../../lib -llbt -Wl,-rpath,'$$ORIGIN/../lib'
+LIBS += -L$$OUT_PWD/../../lib -L$$PWD/../../lib -llbt -Wl,-rpath,'$$ORIGIN/../lib' -ldrogon -ltrantor
 
 INCLUDEPATH += $$PWD/include $$PWD/include/api $$PWD/include/api/controllers $$PWD/include/api/runtime $$PWD/runtime
 
@@ -21,7 +24,8 @@ SOURCES += \
     controllers/info_controller.cpp \
     controllers/docs_controller.cpp \
     controllers/cors_controller.cpp \
-    runtime/info_data_manager.cpp
+    runtime/info_data_manager.cpp \
+    runtime/app_config.cpp
 
 HEADERS += \
     include/api/controllers/add_controller.h \
@@ -30,7 +34,9 @@ HEADERS += \
     include/api/controllers/info_controller.h \
     include/api/controllers/docs_controller.h \
     include/api/controllers/cors_controller.h \
-    include/api/runtime/info_data_manager.h
+    include/api/runtime/info_data_manager.h \
+    include/api/runtime/app_config.h \
+    include/api/logging.h
     
 # Ensure jsoncpp headers are visible to compile public headers that include <json/json.h>
 JSONCPP_PKG_OK = $$system(pkg-config --exists jsoncpp && echo yes || echo no)

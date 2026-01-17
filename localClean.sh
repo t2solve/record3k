@@ -51,3 +51,13 @@ if [[ "$ALL" == 1 ]]; then
 fi
 
 echo "[clean] Done."
+
+#we do copy the intial setup to data
+mkdir -p $PROJECT_ROOT/build/bin/
+cp -r $PROJECT_ROOT/config/examples/intialrun/* $PROJECT_ROOT/build/bin
+echo "[setup] Copied initial run configuration to build/bin/"
+
+# needed lib files
+mkdir -p $PROJECT_ROOT/build/lib/
+#copy vimba needed lib files 
+cp -r $PROJECT_ROOT/vimbax/api/lib/* $PROJECT_ROOT/build/lib/
