@@ -4,11 +4,23 @@
 TEMPLATE = subdirs
 CONFIG += ordered
 
+# Set log level based on build configuration
+# Can be overridden: qmake LOG_LEVEL=INFO or LOG_LEVEL=WARN
+# Valid values: TRACE, DEBUG, INFO, WARN, ERROR, FATAL
+isEmpty(LOG_LEVEL) {
+    CONFIG(debug, debug|release) {
+        LOG_LEVEL = DEBUG
+    } else {
+        LOG_LEVEL = INFO
+    }
+}
+export(LOG_LEVEL)
+
 SUBDIRS = \
     src/liblbt \
-    src/test3 \
-    src/test4 \
-    src/pipelineviewer #\
+    #src/test3 \
+    #src/test4 \
+    #src/pipelineviewer #\
     #src/debugcameraload \
 
     

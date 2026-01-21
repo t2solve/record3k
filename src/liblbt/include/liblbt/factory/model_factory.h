@@ -25,7 +25,7 @@ private:
     T value_{};
     std::string error_;
 };
-
+    
 class ModelFactory {
 public:
     // Construct validated models (normalize where sensible)
@@ -39,7 +39,9 @@ public:
     static StatusOr<api::CameraInfo> makeCameraInfo(
         std::string camUID,
         std::string macAddress,
+        std::optional<std::string> devicePath,
         std::optional<std::string> description,
+        std::string cameraType,
         std::string status);
 
 

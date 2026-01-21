@@ -125,12 +125,25 @@ void PipelineConfigLoader::saveToXML(const std::string& filename, const Pipeline
         fs << "enabled" << 1;
         fs << "parameters" << "{";
         
-        // Write parameters from FilterConfig
-         // Use the new getAllParameters method
+        // Write all parameter types from FilterConfig
+        // 1. Double parameters
         const auto& params = config.configs[i].getAllParameters();
         for (const auto& param : params) {
             fs << param.first << param.second;
         }
+        
+        // 2. String parameters
+        const auto& stringParams = config.configs[i].getAllStringParameters();
+        for (const auto& param : stringParams) {
+            fs << param.first << param.second;
+        }
+        
+        // 3. Mat parameters (camera matrices, etc.)
+        const auto& matParams = config.configs[i].getAllMatParameters();
+        for (const auto& param : matParams) {
+            fs << param.first << param.second;
+        }
+        
         fs << "}";
         fs << "}";
     }
@@ -138,6 +151,113 @@ void PipelineConfigLoader::saveToXML(const std::string& filename, const Pipeline
     fs << "]";
     fs << "}";
     fs.release();
+}
+
+void PipelineConfigLoader::saveToJSON(const std::string& filename, const PipelineConfig& config) {
+    cv::FileStorage fs(filename, cv::FileStorage::WRITE | cv::FileStorage::FORMAT_JSON);
+    
+    fs << "pipeline" << "{";
+    fs << "processing_mode" << processingModeToString(config.mode);
+    fs << "steps" << "[";
+    
+    for (size_t i = 0; i < config.steps.size(); ++i) {
+        fs << "{";
+        fs << "name" << config.steps[i]->getName();
+        fs << "enabled" << 1;
+        fs << "parameters" << "{";
+        
+        // Write all parameter types from FilterConfig
+        // 1. Double parameters
+        const auto& params = config.configs[i].getAllParameters();
+        for (const auto& param : params) {
+            fs << param.first << param.second;
+        }
+        
+        // 2. String parameters
+        const auto& stringParams = config.configs[i].getAllStringParameters();
+        for (const auto& param : stringParams) {
+            fs << param.first << param.second;
+        }
+        
+        // 3. Mat parameters (camera matrices, etc.)
+        const auto& matParams = config.configs[i].getAllMatParameters();
+        for (const auto& param : matParams) {
+            fs << param.first << param.second;
+        }
+        
+        fs << "}";
+        fs << "}";
+    }
+    
+    fs << "]";
+    fs << "}";
+    fs.release();
+}
+
+PipelineConfigLoader::PipelineConfig PipelineConfigLoader::loadFromJSON(const std::string& filename) {
+    cv::FileStorage fs(filename, cv::FileStorage::READ | cv::FileStorage::FORMAT_JSON);
+    PipelineConfig result;
+    
+    if (!fs.isOpened()) {
+        throw std::runtime_error("Could not open JSON file: " + filename);
+    }
+    
+    cv::FileNode pipelineNode = fs["pipeline"];
+    if (pipelineNode.empty()) {
+        throw std::runtime_error("No 'pipeline' node found in JSON");
+    }
+    
+    // Read processing mode
+    std::string modeStr = (std::string)pipelineNode["processing_mode"];
+    result.mode = stringToProcessingMode(modeStr);
+    
+    // Read steps
+    cv::FileNode stepsNode = pipelineNode["steps"];
+    for (cv::FileNodeIterator it = stepsNode.begin(); it != stepsNode.end(); ++it) {
+        cv::FileNode stepNode = *it;
+        std::string stepName = (std::string)stepNode["name"];
+        int enabled = (int)stepNode["enabled"];
+        
+        if (!enabled) continue;
+        
+        FilterType filterType = stringToFilterType(stepName);
+        auto step = ProcessStepFactory::createStep(filterType, result.mode);
+        result.steps.push_back(step);
+        
+        // Read parameters
+        FilterConfig config;
+        cv::FileNode paramsNode = stepNode["parameters"];
+        
+        for (cv::FileNodeIterator paramIt = paramsNode.begin(); paramIt != paramsNode.end(); ++paramIt) {
+            std::string key = (*paramIt).name();
+            cv::FileNode valueNode = *paramIt;
+            
+            // Determine type and read accordingly
+            if (valueNode.isReal() || valueNode.isInt()) {
+                double value = (double)valueNode;
+                config.setParameter(key, value);
+            }
+            else if (valueNode.isString()) {
+                std::string value = (std::string)valueNode;
+                config.setParameter(key, value);
+            }
+            else if (valueNode.isMap() || valueNode.isSeq()) {
+                // This is likely a Mat - try to read it
+                try {
+                    cv::Mat value;
+                    valueNode >> value;
+                    config.setParameter(key, value);
+                } catch (...) {
+                    std::cerr << "[PipelineConfigLoader] Failed to read Mat parameter: " << key << std::endl;
+                }
+            }
+        }
+        
+        result.configs.push_back(config);
+    }
+    
+    fs.release();
+    return result;
 }
 
 ProcessingMode PipelineConfigLoader::stringToProcessingMode(const std::string& modeStr) {

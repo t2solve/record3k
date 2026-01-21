@@ -10,6 +10,13 @@
 # needed: export LD_LIBRARY_PATH=/app/bin:$LD_LIBRARY_PATH
 #  recorder-3k bash   # or sh
 # copy out data: docker cp dreamy_grothendieck:/app/out  .
+#podman run --rm -it --name recorder-3k --network=host --device /dev/dri \
+#  --device /dev/nvidia0 \
+#  --device /dev/nvidiactl \
+#  --device /dev/nvidia-modeset \
+#  --device /dev/nvidia-uvm \
+#  --device /dev/nvidia-uvm-tools \
+#  recorder-3k
 FROM cuda-builder:latest 
 
 # Set environment variables to avoid timezone prompts
@@ -39,8 +46,9 @@ RUN ls -al /app/src/liblbt/include/liblbt
 # ONLY for debug 
 #RUN apt-get update && apt-get install -y gdb
 
-#build test 
-RUN cd /app/ && qmake6 CONFIG+=cuda CONFIG+=api CONFIG+=vimbax record3k.pro 
+#build test with production log level (INFO)
+# For debug builds, add: LOG_LEVEL=DEBUG
+RUN cd /app/ && qmake6 CONFIG+=cuda CONFIG+=api CONFIG+=vimbax LOG_LEVEL=INFO record3k.pro 
 RUN cd /app/ && make -j 6
 
 # install the Vimba SDK drivers 
@@ -65,7 +73,10 @@ ENV LD_LIBRARY_PATH=/app/vimbax/api/lib/:$LD_LIBRARY_PATH
 ENV LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH
 
 # copy default config to bin
-RUN cp /app/config/drogon.config.json /app/bin/drogon.config.json
+RUN cp  -r /app/config/examples/intialrun/*  /app/bin/
+
+# list bin content
+RUN ls -al /app/bin
 
 # Run the application
-CMD ["/app/bin/test3recorder", "/app/bin/data"]
+CMD ["/app/bin/apiserver"]

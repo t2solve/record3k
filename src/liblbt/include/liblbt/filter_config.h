@@ -20,6 +20,8 @@ public:
     
     // Method to get all parameters (useful for XML serialization)
     const std::map<std::string, double>& getAllParameters() const;
+    const std::map<std::string, std::string>& getAllStringParameters() const;
+    const std::map<std::string, cv::Mat>& getAllMatParameters() const;
     
     // Method to check if parameter exists
     bool hasParameter(const std::string& key) const;

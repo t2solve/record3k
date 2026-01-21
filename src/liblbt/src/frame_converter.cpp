@@ -1,7 +1,7 @@
-#ifdef VIMBAX_ENABLED
 #include "frame_converter.h"
 #include <opencv2/imgproc.hpp>
 
+// This function is always available, regardless of VIMBAX_ENABLED
 FrameMemoryObject FrameConverter::convertMatToMemoryObject(const cv::Mat& mat)
 {
     if (mat.empty()) {
@@ -10,6 +10,7 @@ FrameMemoryObject FrameConverter::convertMatToMemoryObject(const cv::Mat& mat)
     return FrameMemoryObject(mat.clone());
 }
 
+#ifdef VIMBAX_ENABLED
 
 FrameMemoryObject FrameConverter::convertVmbFrameToMemoryObject(const FramePtr& frame, bool debugMode) {
     if (!frame) {

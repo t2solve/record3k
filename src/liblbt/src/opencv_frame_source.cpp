@@ -1,5 +1,53 @@
 #include <liblbt/opencv_frame_source.h>
+#include <liblbt/frame_converter.h>
 #include <iostream>
+
+void OpenCVFrameSource::listAvailableCameras() {
+    std::cout << "[OpenCVFrameSource] === Listing Available Cameras ===" << std::endl;
+    
+    int maxCamerasToCheck = 10;  // Check indices 0-9
+    int foundCount = 0;
+    
+    for (int i = 0; i < maxCamerasToCheck; i++) {
+        cv::VideoCapture testCapture;
+        std::cout << "[OpenCVFrameSource] Testing camera index " << i << "..." << std::endl;
+        
+        // Try to open the camera
+        bool opened = testCapture.open(i);
+        
+        if (opened && testCapture.isOpened()) {
+            foundCount++;
+            std::cout << "[OpenCVFrameSource] ✓ Camera " << i << " found:" << std::endl;
+            
+            // Get properties
+            int width = static_cast<int>(testCapture.get(cv::CAP_PROP_FRAME_WIDTH));
+            int height = static_cast<int>(testCapture.get(cv::CAP_PROP_FRAME_HEIGHT));
+            double fps = testCapture.get(cv::CAP_PROP_FPS);
+            int backend = static_cast<int>(testCapture.get(cv::CAP_PROP_BACKEND));
+            int fourcc = static_cast<int>(testCapture.get(cv::CAP_PROP_FOURCC));
+            
+            std::cout << "[OpenCVFrameSource]   Resolution: " << width << "x" << height << std::endl;
+            std::cout << "[OpenCVFrameSource]   FPS: " << fps << std::endl;
+            std::cout << "[OpenCVFrameSource]   Backend: " << backend << std::endl;
+            
+            // Try to get a frame to verify it really works
+            cv::Mat testFrame;
+            bool canRead = testCapture.read(testFrame);
+            if (canRead && !testFrame.empty()) {
+                std::cout << "[OpenCVFrameSource]   Status: Working (captured test frame)" << std::endl;
+            } else {
+                std::cout << "[OpenCVFrameSource]   Status: Opened but failed to capture frame" << std::endl;
+            }
+            
+            testCapture.release();
+        } else {
+            std::cout << "[OpenCVFrameSource]   (not available)" << std::endl;
+        }
+    }
+    
+    std::cout << "[OpenCVFrameSource] === Found " << foundCount << " camera(s) ===" << std::endl;
+    
+}
 
 OpenCVFrameSource::OpenCVFrameSource(int cameraIndex)
     : isCameraSource_(true), frameCounter_(0)
@@ -9,6 +57,8 @@ OpenCVFrameSource::OpenCVFrameSource(int cameraIndex)
     
     if (!capture_.isOpened()) {
         std::cerr << "[OpenCVFrameSource] ERROR: Failed to open camera " << cameraIndex << std::endl;
+        std::cerr << "[OpenCVFrameSource] Listing all available cameras for debugging:" << std::endl;
+        listAvailableCameras();
     } else {
         std::cout << "[OpenCVFrameSource] Camera opened successfully" << std::endl;
         std::cout << "[OpenCVFrameSource]   Resolution: " << getFrameWidth() << "x" << getFrameHeight() << std::endl;
@@ -19,13 +69,32 @@ OpenCVFrameSource::OpenCVFrameSource(int cameraIndex)
 OpenCVFrameSource::OpenCVFrameSource(const std::string& filePath)
     : isCameraSource_(false), frameCounter_(0)
 {
-    std::cout << "[OpenCVFrameSource] Opening video file: " << filePath << std::endl;
+    // Check if this is a device path (like /dev/video0) - treat as camera
+    bool isDevicePath = (filePath.find("/dev/video") == 0);
+    
+    if (isDevicePath) {
+        isCameraSource_ = true;
+        std::cout << "[OpenCVFrameSource] Opening camera device: " << filePath << std::endl;
+    } else {
+        std::cout << "[OpenCVFrameSource] Opening video file: " << filePath << std::endl;
+    }
+    
     capture_.open(filePath);
     
     if (!capture_.isOpened()) {
-        std::cerr << "[OpenCVFrameSource] ERROR: Failed to open video file: " << filePath << std::endl;
+        if (isDevicePath) {
+            std::cerr << "[OpenCVFrameSource] ERROR: Failed to open camera device: " << filePath << std::endl;
+            std::cerr << "[OpenCVFrameSource] Listing all available cameras for debugging:" << std::endl;
+            listAvailableCameras();
+        } else {
+            std::cerr << "[OpenCVFrameSource] ERROR: Failed to open video file: " << filePath << std::endl;
+        }
     } else {
-        std::cout << "[OpenCVFrameSource] Video file opened successfully" << std::endl;
+        if (isDevicePath) {
+            std::cout << "[OpenCVFrameSource] Camera device opened successfully" << std::endl;
+        } else {
+            std::cout << "[OpenCVFrameSource] Video file opened successfully" << std::endl;
+        }
         std::cout << "[OpenCVFrameSource]   Resolution: " << getFrameWidth() << "x" << getFrameHeight() << std::endl;
         std::cout << "[OpenCVFrameSource]   FPS: " << getFPS() << std::endl;
         std::cout << "[OpenCVFrameSource]   Total frames: " << getTotalFrames() << std::endl;

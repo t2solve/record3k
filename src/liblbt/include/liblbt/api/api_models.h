@@ -37,16 +37,18 @@ struct FileInfo {
 
 struct CameraInfo {
     std::string camUID;
-    std::string macAddress;   // keeping conventional spelling
+    std::string macAddress;   // For GigE/VimbaX cameras (keeping conventional spelling)
+    std::optional<std::string> devicePath;  // For USB cameras, e.g., /dev/video4
     std::optional<std::string> description;
     std::string status;
     std::string datetimeLastSeen; // ISO-8601 string
-    std::string cameraType; // e.g., TYPE_CAM_VIMBA, TYPE_FILE
+    std::string cameraType; // TYPE_CAM_VIMBA, TYPE_CAM_USB, TYPE_FILE
 
     Json::Value toJson() const {
         Json::Value j;
         j["camUID"] = camUID;
-        j["macAddress"] = macAddress;
+        if (!macAddress.empty()) j["macAddress"] = macAddress;
+        setIfPresent(j, "devicePath", devicePath);
         j["status"] = status;
         j["datetimeLastSeen"] = datetimeLastSeen;
         if (!cameraType.empty()) j["cameraType"] = cameraType;
@@ -57,6 +59,7 @@ struct CameraInfo {
         CameraInfo x;
         x.camUID = j.get("camUID", "").asString();
         x.macAddress = j.get("macAddress", "").asString();
+        if (j.isMember("devicePath")) x.devicePath = j["devicePath"].asString();
         x.status = j.get("status", "").asString();
         x.datetimeLastSeen = j.get("datetimeLastSeen", "").asString();
         x.cameraType = j.get("cameraType", "").asString();

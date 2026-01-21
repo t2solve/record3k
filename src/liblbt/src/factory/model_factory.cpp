@@ -56,28 +56,58 @@ std::string ModelFactory::normalizeMac(std::string s) {
 }
 
 // CameraInfo
-StatusOr<api::CameraInfo> ModelFactory::makeCameraInfo(std::string camUID, std::string macAddress, std::optional<std::string> description, std::string status) {
+StatusOr<api::CameraInfo> ModelFactory::makeCameraInfo(std::string camUID, std::string macAddress, std::optional<std::string> devicePath, std::optional<std::string> description, std::string cameraType, std::string status) {
     camUID = trim(camUID);
     macAddress = trim(macAddress);
     status = trim(status);
+    cameraType = trim(cameraType);
+    
     if (!isReasonableUID(camUID)) return {"Invalid camUID"};
-    if (!isValidMac(macAddress)) return {"Invalid MAC address"};
-    macAddress = normalizeMac(macAddress);
+    
+    // Validate based on camera type
+    if (cameraType == "TYPE_CAM_VIMBA") {
+        // VimbaX cameras require MAC address
+        if (!isValidMac(macAddress)) return {"Invalid MAC address for TYPE_CAM_VIMBA"};
+        macAddress = normalizeMac(macAddress);
+    } else if (cameraType == "TYPE_CAM_USB") {
+        // USB cameras require device path
+        if (!devicePath || devicePath->empty()) return {"devicePath required for TYPE_CAM_USB"};
+        // Optional: validate device path format (e.g., /dev/video*)
+    } else if (cameraType == "TYPE_FILE") {
+        // File sources don't need MAC or device path
+    } else if (!cameraType.empty()) {
+        return {"Unknown cameraType: " + cameraType};
+    }
+    
     if (!nonEmpty(status)) status = "unknown";
-    api::CameraInfo c{camUID, macAddress, description, status, "", ""}; // cameraType and datetimeLastSeen may be filled by manager
+    api::CameraInfo c{camUID, macAddress, devicePath, description, status, "", cameraType}; // datetimeLastSeen may be filled by manager
     return c;
 }
 StatusOr<api::CameraInfo> ModelFactory::fromJsonCamera(const Json::Value& j) {
-    auto r = makeCameraInfo(j.get("camUID","" ).asString(), j.get("macAddress","" ).asString(),
-                            j.isMember("description")? std::optional<std::string>(j["description"].asString()) : std::nullopt,
-                            j.get("status","" ).asString());
-    if (!r.ok()) return r;
-    // Inject cameraType if present or infer simple heuristic: if macAddress looks valid and starts with 'AA:' treat as TYPE_CAM_VIMBA else TYPE_FILE
+    // Determine camera type first (may be explicit or inferred)
     std::string camType = j.get("cameraType", "").asString();
     if (camType.empty()) {
-        if (isValidMac(r.value().macAddress)) camType = "TYPE_CAM_VIMBA"; else camType = "TYPE_FILE";
+        // Infer from available fields
+        if (j.isMember("devicePath")) {
+            camType = "TYPE_CAM_USB";
+        } else if (j.isMember("macAddress") && isValidMac(j["macAddress"].asString())) {
+            camType = "TYPE_CAM_VIMBA";
+        } else {
+            camType = "TYPE_FILE";
+        }
     }
-    r.value().cameraType = camType;
+    
+    auto r = makeCameraInfo(
+        j.get("camUID","" ).asString(),
+        j.get("macAddress","" ).asString(),
+        j.isMember("devicePath") ? std::optional<std::string>(j["devicePath"].asString()) : std::nullopt,
+        j.isMember("description") ? std::optional<std::string>(j["description"].asString()) : std::nullopt,
+        camType,
+        j.get("status","" ).asString()
+    );
+    
+    if (!r.ok()) return r;
+    
     // Preserve existing datetimeLastSeen if present
     r.value().datetimeLastSeen = j.get("datetimeLastSeen", "").asString();
     return r;

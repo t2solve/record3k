@@ -1,6 +1,8 @@
 #pragma once
 #include "iframe_source.h"
 #include "frame_converter.h"
+
+#include <iostream>
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <memory>
@@ -82,6 +84,12 @@ public:
      * @brief Check if this is a camera source (vs file)
      */
     bool isCameraSource() const { return isCameraSource_; }
+    
+    /**
+     * @brief List all available cameras (static utility)
+     * Tries to open cameras 0-9 and displays their properties
+     */
+    static void listAvailableCameras();
 
 private:
     cv::VideoCapture capture_;

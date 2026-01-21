@@ -6,9 +6,14 @@ DESTDIR = ../../bin
 
 # uncomment for use MOCK
 DEFINES += API_ENABLED
-
 # uncomment for use MOCK
 #DEFINES += DEBUG_FLAG_MOCK
+
+# Set log level from parent project or environment
+!isEmpty(LOG_LEVEL) {
+    DEFINES += LOG_LEVEL_$$LOG_LEVEL
+    message("API log level: $$LOG_LEVEL")
+}
 
 # Use liblbt headers and link to the built .so
 INCLUDEPATH += $$PWD/../liblbt/include
@@ -35,8 +40,7 @@ HEADERS += \
     include/api/controllers/docs_controller.h \
     include/api/controllers/cors_controller.h \
     include/api/runtime/info_data_manager.h \
-    include/api/runtime/app_config.h \
-    include/api/logging.h
+    include/api/runtime/app_config.h
     
 # Ensure jsoncpp headers are visible to compile public headers that include <json/json.h>
 JSONCPP_PKG_OK = $$system(pkg-config --exists jsoncpp && echo yes || echo no)

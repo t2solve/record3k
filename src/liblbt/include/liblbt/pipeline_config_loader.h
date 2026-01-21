@@ -14,6 +14,10 @@ public:
     
     static PipelineConfig loadFromXML(const std::string& filename);
     static void saveToXML(const std::string& filename, const PipelineConfig& config);
+    
+    static PipelineConfig loadFromJSON(const std::string& filename);
+    static void saveToJSON(const std::string& filename, const PipelineConfig& config);
+    
     static ProcessingMode stringToProcessingMode(const std::string& modeStr);
     static std::string processingModeToString(ProcessingMode mode);
     

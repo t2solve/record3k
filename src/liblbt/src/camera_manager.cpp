@@ -1,10 +1,12 @@
 #include <liblbt/camera_manager.h>
+#include <liblbt/opencv_frame_source.h>
 #include <iostream>
 #include <iomanip>
 #include <sstream>
 #include <ctime>
 #include <thread>
 #include <chrono>
+#include <algorithm>
 
 namespace lbt {
 
@@ -83,6 +85,43 @@ CameraTestResult CameraManager::testCamera(const api::CameraInfo& cam, const std
             return CameraTestResult::ERROR_EXCEPTION;
         }
     } 
+    
+    if (cam.cameraType == "TYPE_CAM_USB") {
+        std::cout << "[CameraManager] TYPE_CAM_USB camera test" << std::endl;
+        
+        if (!cam.devicePath || cam.devicePath->empty()) {
+            std::cerr << "[CameraManager] ERROR: No devicePath specified for USB camera" << std::endl;
+            return CameraTestResult::ERROR_PATH_NOT_EXIST;
+        }
+        
+        std::cout << "[CameraManager] Testing USB camera: " << *cam.devicePath << std::endl;
+        
+        try {
+            OpenCVFrameSource src(*cam.devicePath);
+            if (!src.isReady()) {
+                std::cerr << "[CameraManager] ERROR: OpenCVFrameSource not ready for " << *cam.devicePath << std::endl;
+                return CameraTestResult::ERROR_NOT_READY;
+            }
+            
+            std::cout << "[CameraManager] Camera ready, acquiring frame..." << std::endl;
+            auto frame = src.nextFrame();
+            if (frame == nullptr) {
+                std::cerr << "[CameraManager] ERROR: Could not get frame from USB camera" << std::endl;
+                return CameraTestResult::ERROR_NO_FRAME;
+            }
+            
+            std::cout << "[CameraManager] SUCCESS: TYPE_CAM_USB camera test passed" << std::endl;
+            std::cout << "[CameraManager]   Frame size: " << src.getFrameWidth() << "x" << src.getFrameHeight() << std::endl;
+            std::cout << "[CameraManager]   FPS: " << src.getFPS() << std::endl;
+            return CameraTestResult::SUCCESS;
+        } catch (const std::exception& e) {
+            std::cerr << "[CameraManager] EXCEPTION in TYPE_CAM_USB test: " << e.what() << std::endl;
+            return CameraTestResult::ERROR_EXCEPTION;
+        } catch (...) {
+            std::cerr << "[CameraManager] UNKNOWN EXCEPTION in TYPE_CAM_USB test" << std::endl;
+            return CameraTestResult::ERROR_EXCEPTION;
+        }
+    }
     
     if (cam.cameraType == "TYPE_CAM_VIMBA") {
         std::cout << "[CameraManager] TYPE_CAM_VIMBA camera test" << std::endl;

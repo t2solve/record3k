@@ -15,6 +15,7 @@ set -euo pipefail
 #   ./localBuild.sh --cuda       # use CUDA
 #   ./localBuild.sh --vimbax     # use VimbaX
 #   ./localBuild.sh --api        # build the API server app
+#   ./localBuild.sh --api --log-level INFO  # build API with INFO log level
 #   ./localBuild.sh --clean         # clean build dir before building
 #   ./localBuild.sh -j 8            # build with 8 jobs
 #   ./localBuild.sh --x pipelineviewer   # build and run pipelineviewer
@@ -41,13 +42,21 @@ while [[ $# -gt 0 ]]; do
     --api)
       EXTRA_CONFIG+=("CONFIG+=api")
       shift ;;
+    --log-level)
+      LOG_LEVEL="${2:-}"
+      if [[ -z "$LOG_LEVEL" ]]; then
+        echo "--log-level requires a value (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)" >&2
+        exit 1
+      fi
+      EXTRA_CONFIG+=("LOG_LEVEL=$LOG_LEVEL")
+      shift 2 ;;
     --clean)
       CLEAN=1
       shift ;;
     -j|--jobs)
       JOBS="${2:-$JOBS}"
       shift 2 ;;  
-    --x)
+    --x)  
       RUN_APP="${2:-}"
       if [[ -z "$RUN_APP" ]]; then
         echo "--x requires a binary name (e.g., pipelineviewer)" >&2

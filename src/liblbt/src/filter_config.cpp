@@ -26,6 +26,14 @@ const std::map<std::string, double>& FilterConfig::getAllParameters() const {
     return parameters;
 }
 
+const std::map<std::string, std::string>& FilterConfig::getAllStringParameters() const {
+    return parametersString;
+}
+
+const std::map<std::string, cv::Mat>& FilterConfig::getAllMatParameters() const {
+    return parametersMat;
+}
+
 void FilterConfig::setParameter(const std::string& key, const std::string& value) {
     parametersString[key] = value;
 }

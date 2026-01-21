@@ -60,9 +60,29 @@ int main(int argc, char* argv[])
     std::cout << "[api] API_ENABLED not defined; rebuild with CONFIG+=api to start server." << std::endl;
     return 0;
 #else
-    // Set log level to DEBUG to see all detailed logs
+    // Set log level based on build configuration (from LOG_LEVEL define)
+#if defined(LOG_LEVEL_TRACE)
+    trantor::Logger::setLogLevel(trantor::Logger::kTrace);
+    LOG_INFO << "Log level: TRACE";
+#elif defined(LOG_LEVEL_DEBUG)
     trantor::Logger::setLogLevel(trantor::Logger::kDebug);
-    LOG_INFO << "Log level set to DEBUG for detailed diagnostics";
+    LOG_INFO << "Log level: DEBUG";
+#elif defined(LOG_LEVEL_INFO)
+    trantor::Logger::setLogLevel(trantor::Logger::kInfo);
+    LOG_INFO << "Log level: INFO";
+#elif defined(LOG_LEVEL_WARN)
+    trantor::Logger::setLogLevel(trantor::Logger::kWarn);
+    LOG_WARN << "Log level: WARN";
+#elif defined(LOG_LEVEL_ERROR)
+    trantor::Logger::setLogLevel(trantor::Logger::kError);
+    LOG_ERROR << "Log level: ERROR";
+#elif defined(LOG_LEVEL_FATAL)
+    trantor::Logger::setLogLevel(trantor::Logger::kFatal);
+#else
+    // Fallback to INFO if not specified
+    trantor::Logger::setLogLevel(trantor::Logger::kInfo);
+    LOG_INFO << "Log level: INFO (default)";
+#endif
     
     // Register signal handlers for graceful shutdown
     std::signal(SIGINT, signalHandler);   // Ctrl+C
@@ -96,45 +116,20 @@ int main(int argc, char* argv[])
             LOG_DEBUG << "Config key found: " << key;
         }
         
-        // data_root_path is nested under "app" section
-        if (!customConfig.empty() && customConfig.isMember("data_root_path")) {
-            std::string dataPath = customConfig["data_root_path"].asString();
-            api::AppConfig::instance().setDataRootPath(dataPath);
-            LOG_INFO << "Data root path set to: " << dataPath;
+        // Load data_root_path: Priority: ENV > config > default
+        std::string dataPath;
+        if (const char* envPath = std::getenv("DATA_ROOT_PATH")) {
+            dataPath = envPath;
+            LOG_INFO << "Data root path from environment variable: " << dataPath;
+        } else if (!customConfig.empty() && customConfig.isMember("data_root_path")) {
+            dataPath = customConfig["data_root_path"].asString();
+            LOG_INFO << "Data root path from config file: " << dataPath;
         } else {
-            LOG_INFO << "Using default data root path: data";
+            dataPath = "data";
+            LOG_INFO << "Using default data root path: " << dataPath;
         }
+        api::AppConfig::instance().setDataRootPath(dataPath);
         
-        // Load VimbaX configuration
-        if (!customConfig.empty() && customConfig.isMember("vimbax_transport_layer_file")) {
-            std::string tlFile = customConfig["vimbax_transport_layer_file"].asString();
-            LOG_INFO << "Read vimbax_transport_layer_file from config: " << tlFile;
-            
-            // If it's a relative path or just a filename, try to resolve it
-            std::filesystem::path tlPath(tlFile);
-            if (!tlPath.is_absolute()) {
-                // Try relative to current directory first
-                if (std::filesystem::exists(tlFile)) {
-                    tlFile = std::filesystem::absolute(tlFile).string();
-                    LOG_INFO << "Resolved to absolute path: " << tlFile;
-                }
-                // Try relative to common vimbax/cti directory
-                else {
-                    std::filesystem::path vimbaxPath = "vimbax/cti/" + std::string(tlFile);
-                    if (std::filesystem::exists(vimbaxPath)) {
-                        tlFile = std::filesystem::absolute(vimbaxPath).string();
-                        LOG_INFO << "Resolved to vimbax/cti path: " << tlFile;
-                    } else {
-                        LOG_WARN << "Could not find .cti file, will use as-is: " << tlFile;
-                    }
-                }
-            }
-            
-            api::AppConfig::instance().setVimbaxTransportLayerPath(tlFile);
-            LOG_INFO << "VimbaX transport layer file set to: " << tlFile;
-        } else {
-            LOG_INFO << "No vimbax_transport_layer_file in drogon.config.json";
-        }
     } catch (const std::exception &e) {
         LOG_WARN << "Could not load custom config, using default data path: " << e.what();
     }
