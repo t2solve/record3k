@@ -128,8 +128,8 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
             lbt::RecordManager::RecordConfig recordConfig;
             recordConfig.frameSource = std::move(frameSource);
             recordConfig.pipeline = pipeConfig;
-            recordConfig.totalTimeSeconds = 20.0;  // 20 seconds
-            recordConfig.targetFPS = 10.0;          // 10 FPS
+            recordConfig.totalTimeSeconds = 30.0;  
+            recordConfig.targetFPS = 2;          
             recordConfig.recordUID = recordUID;
             recordConfig.outputDir = "/tmp/record3k";
             

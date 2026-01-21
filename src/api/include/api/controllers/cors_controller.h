@@ -7,10 +7,11 @@ public:
     ADD_METHOD_TO(CorsController::optionsSimple, "/add/study_meta_info", drogon::Options);
     ADD_METHOD_TO(CorsController::optionsSimple, "/add/pipeline", drogon::Options);
     ADD_METHOD_TO(CorsController::optionsSimple, "/do/record/start", drogon::Options);
-    ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/{1}/calibrate", drogon::Options);
-    ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/{1}/pipeline/test", drogon::Options);
+    ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/calibrate/{1}", drogon::Options);
+    ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/pipeline_test/{1}", drogon::Options);
     ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/test/{1}", drogon::Options);
     ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/record/{1}/stop", drogon::Options);
+    ADD_METHOD_TO(CorsController::optionsWithParam, "/do/camera/record/start/{1}", drogon::Options);
     METHOD_LIST_END
 
     void optionsSimple(const drogon::HttpRequestPtr&, std::function<void (const drogon::HttpResponsePtr &)> && cb);
