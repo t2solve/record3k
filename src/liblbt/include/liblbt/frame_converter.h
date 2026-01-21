@@ -17,6 +17,9 @@ public:
     // Convert to OpenCV Mat (for backward compatibility)
     static cv::Mat convertVmbFrameToMat(const FramePtr& frame, bool debugMode = false);
     
+    // Convert from openCV Mat to FrameMemoryObject
+    static FrameMemoryObject convertMatToMemoryObject(const cv::Mat& mat);
+
     // Utility methods
     static std::string getPixelFormatString(VmbPixelFormatType pixelFormat);
     static std::string getFrameStatusString(VmbFrameStatusType status);

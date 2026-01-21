@@ -2,6 +2,15 @@
 #include "frame_converter.h"
 #include <opencv2/imgproc.hpp>
 
+FrameMemoryObject FrameConverter::convertMatToMemoryObject(const cv::Mat& mat)
+{
+    if (mat.empty()) {
+        return FrameMemoryObject();
+    }
+    return FrameMemoryObject(mat.clone());
+}
+
+
 FrameMemoryObject FrameConverter::convertVmbFrameToMemoryObject(const FramePtr& frame, bool debugMode) {
     if (!frame) {
         if (debugMode) qWarning() << "Cannot convert null frame";

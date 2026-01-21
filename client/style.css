@@ -716,3 +716,45 @@ footer #api-status {
         width: 100px;
     }
 }
+
+/* Notification Banner */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    font-weight: 500;
+    z-index: 1000;
+    transform: translateX(400px);
+    opacity: 0;
+    transition: all 0.3s ease-in-out;
+    max-width: 400px;
+    word-wrap: break-word;
+}
+
+.notification.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.notification-success {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.notification-error {
+    background-color: var(--error-color);
+    color: white;
+}
+
+.notification-info {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.notification-warning {
+    background-color: var(--warning-color);
+    color: white;
+}

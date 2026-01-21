@@ -28,40 +28,134 @@
 #include <liblbt/pipeline_config_loader.h>
 #include <liblbt/disk_image_frame_source.h>
 #include <liblbt/vimbax_frame_source.h>
-
+#include <liblbt/camera_manager_vimbax.h>
+#include <liblbt/opencv_frame_source.h>
 
 #ifdef VIMBAX_ENABLED
-std::vector<std::tuple<std::string, std::string>> ListCameraSerialAndInterface()
+// Minimal test function that directly uses VmbSystem like SDK example
+void TestVimbaXDirectly(const std::string& ctiPath = "")
 {
-    std::vector<std::tuple<std::string, std::string>> result;
-
+    std::cout << "\n=== [DirectTest] Testing VimbaX SDK Directly (like ListCameras.cpp) ===" << std::endl;
+    
     VmbCPP::VmbSystem& sys = VmbCPP::VmbSystem::GetInstance();
-    VmbErrorType err = sys.Startup();
-    if (err != VmbErrorSuccess)
-        return result;
-
+    
+    // Query version
+    VmbVersionInfo_t versionInfo;
+    VmbErrorType err = sys.QueryVersion(versionInfo);
+    if (err == VmbErrorSuccess) {
+        std::cout << "[DirectTest] Vmb Version Major: " << versionInfo.major 
+                  << " Minor: " << versionInfo.minor 
+                  << " Patch: " << versionInfo.patch << std::endl;
+    } else {
+        std::cerr << "[DirectTest] ERROR: QueryVersion failed with error: " << err << std::endl;
+    }
+    
+    // Startup
+    std::cout << "[DirectTest] Calling VmbSystem::Startup()..." << std::endl;
+    if (ctiPath.empty()) {
+        err = sys.Startup();
+    } else {
+        std::cout << "[DirectTest] Using CTI path: " << ctiPath << std::endl;
+        err = sys.Startup(ctiPath.c_str());
+    }
+    
+    if (err != VmbErrorSuccess) {
+        std::cerr << "[DirectTest] ERROR: Could not start system. Error code: " << err << std::endl;
+        return;
+    }
+    
+    std::cout << "[DirectTest] *** Startup SUCCESS ***" << std::endl;
+    
+    // Get transport layers
+    VmbCPP::TransportLayerPtrVector transportlayers;
+    err = sys.GetTransportLayers(transportlayers);
+    if (err == VmbErrorSuccess) {
+        std::cout << "[DirectTest] TransportLayers found: " << transportlayers.size() << std::endl;
+    } else {
+        std::cerr << "[DirectTest] ERROR: GetTransportLayers failed with error: " << err << std::endl;
+    }
+    
+    // Get interfaces
+    VmbCPP::InterfacePtrVector interfaces;
+    err = sys.GetInterfaces(interfaces);
+    if (err == VmbErrorSuccess) {
+        std::cout << "[DirectTest] Interfaces found: " << interfaces.size() << std::endl;
+    } else {
+        std::cerr << "[DirectTest] ERROR: GetInterfaces failed with error: " << err << std::endl;
+    }
+    
+    // Get cameras
+    std::cout << "[DirectTest] Calling GetCameras()..." << std::endl;
     VmbCPP::CameraPtrVector cameras;
     err = sys.GetCameras(cameras);
-    if (err == VmbErrorSuccess)
-    {
-        for (const auto& camera : cameras)
-        {
-            std::string serial, interfaceID;
-            if (camera->GetSerialNumber(serial) != VmbErrorSuccess)
-                serial = "";
-            if (camera->GetInterfaceID(interfaceID) != VmbErrorSuccess)
-                interfaceID = "";
-            result.emplace_back(serial, interfaceID);
+    if (err == VmbErrorSuccess) {
+        std::cout << "[DirectTest] *** Cameras found: " << cameras.size() << " ***" << std::endl;
+        
+        // Print camera details
+        for (size_t i = 0; i < cameras.size(); i++) {
+            const auto& camera = cameras[i];
+            std::string strID, strName, strModel, strSerial, strInterfaceID;
+            
+            camera->GetID(strID);
+            camera->GetName(strName);
+            camera->GetModel(strModel);
+            camera->GetSerialNumber(strSerial);
+            camera->GetInterfaceID(strInterfaceID);
+            
+            std::cout << "[DirectTest] Camera " << (i+1) << ":" << std::endl;
+            std::cout << "[DirectTest]   Name          : " << strName << std::endl;
+            std::cout << "[DirectTest]   Model         : " << strModel << std::endl;
+            std::cout << "[DirectTest]   ID            : " << strID << std::endl;
+            std::cout << "[DirectTest]   Serial        : " << strSerial << std::endl;
+            std::cout << "[DirectTest]   Interface ID  : " << strInterfaceID << std::endl;
+            
+            VmbCPP::TransportLayerPtr pTL;
+            if (camera->GetTransportLayer(pTL) == VmbErrorSuccess) {
+                std::string tlID, tlPath;
+                pTL->GetID(tlID);
+                pTL->GetPath(tlPath);
+                std::cout << "[DirectTest]   TL ID         : " << tlID << std::endl;
+                std::cout << "[DirectTest]   TL Path       : " << tlPath << std::endl;
+            }
         }
+    } else {
+        std::cerr << "[DirectTest] ERROR: Could not list cameras. Error code: " << err << std::endl;
     }
-
+    
+    // Shutdown
+    std::cout << "[DirectTest] Calling Shutdown()..." << std::endl;
     sys.Shutdown();
-    return result;
+    std::cout << "[DirectTest] === Test Complete ===" << std::endl << std::endl;
+}
+
+std::vector<lbt::VimbaXCameraInfo> ListCamerasUsingManager(const std::string& ctiPath = "")
+{
+    std::cout << "[test3] Initializing VimbaX camera system..." << std::endl;
+    
+    // Get singleton instance and initialize
+    auto& vimbaxMgr = lbt::CameraManagerVimbax::getInstance();
+    
+    if (!vimbaxMgr.startup(ctiPath)) {
+        std::cerr << "[test3] Failed to initialize VimbaX system" << std::endl;
+        auto status = vimbaxMgr.getStatus();
+        std::cerr << "[test3] Error: " << status.errorMessage << std::endl;
+        return {};
+    }
+    
+    std::cout << "[test3] VimbaX system initialized successfully" << std::endl;
+    
+    // Get camera list
+    std::cout << "[test3] Getting camera list..." << std::endl;
+    auto cameras = vimbaxMgr.getCameras();
+    
+    std::cout << "[test3] Found " << cameras.size() << " camera(s)" << std::endl;
+    
+    return cameras;
 }
 #else
-std::vector<std::tuple<std::string, std::string>> ListCameraSerialAndInterface()
+std::vector<lbt::VimbaXCameraInfo> ListCamerasUsingManager(const std::string& ctiPath = "")
 {
-    // VimbaX not enabled; return empty list
+    std::cerr << "[test3] VimbaX not enabled in build" << std::endl;
     return {};
 }
 #endif
@@ -123,28 +217,54 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    //we list all connected cameras
-    auto cams = ListCameraSerialAndInterface();
-    std::cout << "Connected cameras:\n";
-    for (const auto& [serial, interfaceID] : cams) {
-        std::cout << " - Serial: " << serial << ", Interface: " << interfaceID << "\n";
-    }
-    //we select the first camera if any
-    std::shared_ptr<IFrameSource> frameSource;
-    if (!cams.empty()) {
-        const auto& [serial, interfaceID] = cams.front();
-        frameSource = std::make_shared<VimbaXFrameSource>(serial, interfaceID, true);
-    }
-    else {
-        std::cout << "No cameras found; exiting. Using disk image frame source instead.\n";
-        frameSource = std::make_shared<DiskImageFrameSource>(image_dir, "*.jpg");
-    }
+    // //we list all connected cameras using new CameraManagerVimbax
+    // std::string ctiPath = "VimbaGigETL.cti"; // or provide full path
+    
+    // // First test VimbaX directly like the SDK example
+    // TestVimbaXDirectly();
+    
+    // // Then try our wrapper
+    // auto cams = ListCamerasUsingManager(ctiPath);
+    // std::cout << "Connected cameras:\n";
+    // for (const auto& cam : cams) {
+    //     std::cout << " - Name: " << cam.name 
+    //               << ", Serial: " << cam.serial 
+    //               << ", Model: " << cam.model
+    //               << ", MAC: " << cam.macAddress
+    //               << ", Interface: " << cam.interfaceId << "\n";
+    // }
+    
+    // //we select the first camera if any
+    // std::shared_ptr<IFrameSource> frameSource;
+    // if (!cams.empty()) {
+    //     // Use the first camera found - try by serial number and interface
+    //     const auto& firstCam = cams.front();
+    //     std::cout << "[test3] Using camera: " << firstCam.name << " (S/N: " << firstCam.serial << ")" << std::endl;
+    //     frameSource = std::make_shared<VimbaXFrameSource>(firstCam.serial, firstCam.interfaceId, true);
+    // }
+    // else {
+    //     std::cout << "No cameras found; using disk image frame source instead.\n";
+    //     frameSource = std::make_shared<DiskImageFrameSource>(image_dir, "*.jpg");
+    // }
+    // Default camera
+    auto frameSource = std::make_shared<OpenCVFrameSource>(0);
 
-    //test 
+
+
+    //test  1
     if (frameSource == nullptr) {
         std::cerr << "Failed to create frame source; exiting.\n";
         return -1;
     }
+
+        // Use it
+    if (frameSource->isReady()) {
+            std::cout << "[test3] Frame source is ready.\n";
+    } else {
+            std::cerr << "[test3] Frame source is NOT ready; exiting.\n";
+            return -1;
+    }
+
     // we build the processing pipeline from by hand
     // Create background subtraction pipeline
     std::vector<std::shared_ptr<ProcessStep>> pipeline;

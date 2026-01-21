@@ -406,6 +406,9 @@ class BugTrackerApp {
     async testCamera(camUID) {
         if (!confirm(`Test camera ${camUID} connectivity?`)) return;
         
+        // Show testing in progress
+        this.showNotification('Testing camera...', 'info');
+        
         try {
             const response = await fetch(`${API_BASE_URL}/do/camera/test/${camUID}`, {
                 method: 'POST',
@@ -414,6 +417,16 @@ class BugTrackerApp {
             
             if (response.ok) {
                 const result = await response.json();
+                
+                // Show success/failure notification
+                if (result.success) {
+                    this.showNotification(`✓ Camera ${camUID} is ONLINE and working!`, 'success');
+                } else {
+                    const errorMsg = result.errorDetail ? `\n${result.errorDetail}` : '';
+                    this.showNotification(`✗ Camera ${camUID} is OFFLINE: ${result.testResult}${errorMsg}`, 'error');
+                }
+                
+                // Also show detailed alert
                 const status = result.success ? '✓ ONLINE' : '✗ OFFLINE';
                 let message = `Camera Test Result\n\n`;
                 message += `Camera: ${camUID}\n`;
@@ -432,8 +445,29 @@ class BugTrackerApp {
                 throw new Error(`HTTP ${response.status}`);
             }
         } catch (error) {
+            this.showNotification(`Failed to test camera: ${error.message}`, 'error');
             alert(`Failed to test camera: ${error.message}`);
         }
+    }
+    
+    showNotification(message, type = 'info') {
+        // Create notification element if it doesn't exist
+        let notification = document.getElementById('notification');
+        if (!notification) {
+            notification = document.createElement('div');
+            notification.id = 'notification';
+            notification.className = 'notification';
+            document.body.appendChild(notification);
+        }
+        
+        // Set message and type
+        notification.textContent = message;
+        notification.className = `notification notification-${type} show`;
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            notification.classList.remove('show');
+        }, 5000);
     }
 
     async calibrateCamera(camUID) {

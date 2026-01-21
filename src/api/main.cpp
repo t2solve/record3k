@@ -17,6 +17,8 @@
 #include <thread>
 #include <optional>
 #include <cstdlib>
+#include <csignal>
+#include <atomic>
 
 #include <liblbt/process_step.h>
 #include <liblbt/process_step_factory.h>
@@ -26,6 +28,30 @@
 #include <liblbt/pipeline_config_loader.h>
 #include <liblbt/disk_image_frame_source.h>
 #include <liblbt/vimbax_frame_source.h>
+#include <liblbt/camera_manager_vimbax.h>
+
+// Signal handler for graceful shutdown
+std::atomic<bool> shutdownRequested{false};
+
+void signalHandler(int signal) {
+    if (signal == SIGINT || signal == SIGTERM) {
+        std::cout << "\n[main] Shutdown signal received (signal: " << signal << "), shutting down gracefully..." << std::endl;
+        shutdownRequested = true;
+        
+#ifdef API_ENABLED
+        // Stop the Drogon server
+        drogon::app().quit();
+        std::cout << "[main] Drogon server shutdown requested" << std::endl;
+#endif
+
+#ifdef VIMBAX_ENABLED
+        // Shutdown VimbaX system
+        auto& vimbaxMgr = lbt::CameraManagerVimbax::getInstance();
+        vimbaxMgr.shutdown();
+        std::cout << "[main] VimbaX system shutdown complete" << std::endl;
+#endif
+    }
+}
 
 
 int main(int argc, char* argv[])
@@ -34,6 +60,15 @@ int main(int argc, char* argv[])
     std::cout << "[api] API_ENABLED not defined; rebuild with CONFIG+=api to start server." << std::endl;
     return 0;
 #else
+    // Set log level to DEBUG to see all detailed logs
+    trantor::Logger::setLogLevel(trantor::Logger::kDebug);
+    LOG_INFO << "Log level set to DEBUG for detailed diagnostics";
+    
+    // Register signal handlers for graceful shutdown
+    std::signal(SIGINT, signalHandler);   // Ctrl+C
+    std::signal(SIGTERM, signalHandler);  // Termination signal
+    LOG_INFO << "Signal handlers registered (SIGINT, SIGTERM)";
+    
     // Try to load external config (includes swagger settings). If missing, fallback.
     try {
         drogon::app().loadConfigFile("./drogon.config.json");
@@ -116,6 +151,52 @@ int main(int argc, char* argv[])
     }
     LOG_INFO << "Data path validation successful";
     
+    // Initialize VimbaX system in background thread to avoid blocking server startup
+    #ifdef VIMBAX_ENABLED
+    LOG_INFO << "Starting VimbaX camera system initialization in background...";
+    std::string vimbaxPath = api::AppConfig::instance().getVimbaxTransportLayerPath();
+    
+    // Launch initialization in background thread
+    std::thread vimbaxInitThread([vimbaxPath]() {
+        LOG_INFO << "[VimbaX Thread] Initializing VimbaX camera system...";
+        auto& vimbaxMgr = lbt::CameraManagerVimbax::getInstance();
+        
+        if (vimbaxMgr.startup(vimbaxPath)) {
+            LOG_INFO << "[VimbaX Thread] VimbaX startup successful";
+            LOG_INFO << "[VimbaX Thread] Waiting for camera discovery (this may take time for GigE cameras)...";
+            
+            // Give GigE cameras time to be discovered on the network
+            // Note: This can block for a while on first GetCameras() call
+            auto startTime = std::chrono::steady_clock::now();
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            
+            LOG_INFO << "[VimbaX Thread] Querying cameras...";
+            LOG_INFO << "[VimbaX Thread] Calling updateCameraList() - this will acquire mutex and may block on GetCameras()...";
+            vimbaxMgr.updateCameraList();
+            LOG_INFO << "[VimbaX Thread] updateCameraList() completed, mutex released";
+            
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - startTime).count();
+            
+            auto status = vimbaxMgr.getStatus();
+            auto cameras = vimbaxMgr.getCameras();
+            LOG_INFO << "[VimbaX Thread] VimbaX ready after " << elapsed << "s: v" 
+                     << status.versionMajor << "." << status.versionMinor 
+                     << "." << status.versionPatch << ", found " << cameras.size() << " camera(s)";
+            for (const auto& cam : cameras) {
+                LOG_INFO << "[VimbaX Thread]   - " << cam.name << " (S/N: " << cam.serial << ", MAC: " << cam.macAddress << ")";
+            }
+        } else {
+            LOG_WARN << "[VimbaX Thread] VimbaX startup failed - camera functionality may be limited";
+            LOG_WARN << "[VimbaX Thread] Error: " << vimbaxMgr.getStatus().errorMessage;
+        }
+    });
+    vimbaxInitThread.detach(); // Let it run independently
+    LOG_INFO << "VimbaX initialization started in background, continuing with server startup...";
+    #else
+    LOG_INFO << "VimbaX not enabled in this build";
+    #endif
+    
     // Enable CORS for browser access from different origins
     drogon::app().registerPreHandlingAdvice([](const drogon::HttpRequestPtr &req, 
                                                drogon::AdviceCallback &&acb, 
@@ -146,7 +227,23 @@ int main(int argc, char* argv[])
     
     LOG_INFO << "Starting Drogon server; swagger (if enabled) at /swagger and spec at /openapi.json";
     LOG_INFO << "CORS enabled for browser access (with preflight support)";
+    LOG_INFO << "Press Ctrl+C to stop the server";
     drogon::app().run();
+    
+    // Cleanup after server shutdown
+    LOG_INFO << "Drogon server stopped";
+    
+#ifdef VIMBAX_ENABLED
+    // Ensure VimbaX is shutdown if not already done by signal handler
+    if (!shutdownRequested) {
+        LOG_INFO << "Shutting down VimbaX system...";
+        auto& vimbaxMgr = lbt::CameraManagerVimbax::getInstance();
+        vimbaxMgr.shutdown();
+        LOG_INFO << "VimbaX system shutdown complete";
+    }
+#endif
+    
+    LOG_INFO << "Application exiting cleanly";
     return 0;
 #endif
 }

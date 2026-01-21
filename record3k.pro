@@ -7,12 +7,14 @@ CONFIG += ordered
 SUBDIRS = \
     src/liblbt \
     src/test3 \
+    src/test4 \
     src/pipelineviewer #\
     #src/debugcameraload \
 
     
 #define deps
 src/test3.depends = src/liblbt
+src/test4.depends = src/liblbt
 src/pipelineviewer.depends = src/liblbt
 src/debugcameraload.depends = src/liblbt
 

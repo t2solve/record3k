@@ -51,89 +51,129 @@ void DoController::cameraRecordStop(const HttpRequestPtr&, std::function<void (c
 }
 
 // Test a specific camera by UID
-void DoController::cameraTest(const HttpRequestPtr&, std::function<void (const HttpResponsePtr &)> && cb, const std::string &camUID) {
-    try {
-        auto cameraPath = api::AppConfig::instance().getInfoPath("cameras");
-        lbt::CameraManager mgr(cameraPath);
-        mgr.load();
-        
-        // Get VimbaX configuration
-        std::string vimbaxCtiPath = api::AppConfig::instance().getVimbaxTransportLayerPath();
-        LOG_DEBUG << "[DoController] Retrieved VimbaX CTI path: '" << vimbaxCtiPath << "'";
-        
-        // Get camera info by UID
-        auto camInfo = mgr.get(camUID);
-        if (!camInfo) {
-            Json::Value err; 
-            err["error"] = "Camera not found: " + camUID;
-            auto resp = HttpResponse::newHttpJsonResponse(err);
-            resp->setStatusCode(k404NotFound);
+void DoController::cameraTest(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> && cb, const std::string &camUID) {
+    LOG_INFO << "[DoController::cameraTest] Starting camera test for: " << camUID;
+    
+    // Run camera test in a background thread to avoid blocking the API
+    std::thread testThread([cb = std::move(cb), camUID]() mutable {
+        LOG_INFO << "[DoController::cameraTest Thread] Background thread started for: " << camUID;
+        try {
+            LOG_DEBUG << "[DoController::cameraTest Thread] Getting camera info path...";
+            auto cameraPath = api::AppConfig::instance().getInfoPath("cameras");
+            LOG_DEBUG << "[DoController::cameraTest Thread] Camera path: " << cameraPath;
+            
+            LOG_DEBUG << "[DoController::cameraTest Thread] Creating CameraManager...";
+            lbt::CameraManager mgr(cameraPath);
+            LOG_DEBUG << "[DoController::cameraTest Thread] Loading cameras...";
+            mgr.load();
+            LOG_DEBUG << "[DoController::cameraTest Thread] Cameras loaded";
+            
+            // Get VimbaX configuration
+            LOG_DEBUG << "[DoController::cameraTest Thread] Getting VimbaX CTI path...";
+            std::string vimbaxCtiPath = api::AppConfig::instance().getVimbaxTransportLayerPath();
+            LOG_DEBUG << "[DoController::cameraTest Thread] VimbaX CTI path: '" << vimbaxCtiPath << "'";
+            
+            // Get camera info by UID
+            LOG_DEBUG << "[DoController::cameraTest Thread] Looking up camera: " << camUID;
+            auto camInfo = mgr.get(camUID);
+            if (!camInfo) {
+                LOG_WARN << "[DoController::cameraTest Thread] Camera not found: " << camUID;
+                Json::Value err; 
+                err["error"] = "Camera not found: " + camUID;
+                auto resp = HttpResponse::newHttpJsonResponse(err);
+                resp->setStatusCode(k404NotFound);
+                LOG_DEBUG << "[DoController::cameraTest Thread] Sending 404 response";
+                cb(resp);
+                LOG_DEBUG << "[DoController::cameraTest Thread] Response sent, thread exiting";
+                return;
+            }
+            LOG_INFO << "[DoController::cameraTest Thread] Camera found, type: " << camInfo->cameraType;
+            
+            // Test the camera (this may block but it's in a background thread now)
+            LOG_INFO << "[DoController::cameraTest Thread] Calling testCamera()...";
+            lbt::CameraTestResult testResult = mgr.testCamera(*camInfo, vimbaxCtiPath);
+            LOG_INFO << "[DoController::cameraTest Thread] testCamera() returned with result: " << static_cast<int>(testResult);
+            
+            bool success = (testResult == lbt::CameraTestResult::SUCCESS);
+            
+            // Map enum to string for response
+            std::string resultStr;
+            std::string errorDetail;
+            switch (testResult) {
+                case lbt::CameraTestResult::SUCCESS:
+                    resultStr = "online";
+                    break;
+                case lbt::CameraTestResult::ERROR_NOT_FOUND:
+                    resultStr = "offline";
+                    errorDetail = "Camera not found or not connected";
+                    break;
+                case lbt::CameraTestResult::ERROR_NOT_READY:
+                    resultStr = "offline";
+                    errorDetail = "Camera found but not ready";
+                    break;
+                case lbt::CameraTestResult::ERROR_NO_FRAME:
+                    resultStr = "offline";
+                    errorDetail = "Camera ready but cannot get frame";
+                    break;
+                case lbt::CameraTestResult::ERROR_PATH_NOT_EXIST:
+                    resultStr = "offline";
+                    errorDetail = "File path does not exist";
+                    break;
+                case lbt::CameraTestResult::ERROR_EXCEPTION:
+                    resultStr = "offline";
+                    errorDetail = "Exception occurred during test";
+                    break;
+                case lbt::CameraTestResult::ERROR_NOT_BUILT:
+                    resultStr = "offline";
+                    errorDetail = "Required feature not built (e.g., VimbaX disabled)";
+                    break;
+                case lbt::CameraTestResult::ERROR_UNKNOWN_TYPE:
+                    resultStr = "offline";
+                    errorDetail = "Unknown camera type";
+                    break;
+                default:
+                    resultStr = "offline";
+                    errorDetail = "Unknown error";
+                    break;
+            }
+            
+            LOG_INFO << "[DoController::cameraTest Thread] Result: " << resultStr << ", Success: " << success;
+            
+            // Prepare response
+            Json::Value result;
+            result["camUID"] = camUID;
+            result["testResult"] = resultStr;
+            result["success"] = success;
+            if (!errorDetail.empty()) {
+                result["errorDetail"] = errorDetail;
+            }
+            
+            LOG_DEBUG << "[DoController::cameraTest Thread] Preparing HTTP response...";
+            auto resp = HttpResponse::newHttpJsonResponse(result);
+            resp->setStatusCode(k200OK);
+            LOG_INFO << "[DoController::cameraTest Thread] Sending response back...";
             cb(resp);
-            return;
+            LOG_INFO << "[DoController::cameraTest Thread] Response sent successfully, thread completing";
+        } catch (const std::exception& e) {
+            LOG_ERROR << "[DoController::cameraTest Thread] Exception caught: " << e.what();
+            Json::Value err; 
+            err["error"] = std::string("Camera test failed: ") + e.what();
+            auto resp = HttpResponse::newHttpJsonResponse(err);
+            resp->setStatusCode(k500InternalServerError);
+            LOG_DEBUG << "[DoController::cameraTest Thread] Sending error response";
+            cb(resp);
+            LOG_DEBUG << "[DoController::cameraTest Thread] Error response sent";
+        } catch (...) {
+            LOG_ERROR << "[DoController::cameraTest Thread] Unknown exception caught";
+            Json::Value err; 
+            err["error"] = "Camera test failed: unknown exception";
+            auto resp = HttpResponse::newHttpJsonResponse(err);
+            resp->setStatusCode(k500InternalServerError);
+            cb(resp);
         }
-        
-        // Test the camera
-        lbt::CameraTestResult testResult = mgr.testCamera(*camInfo, vimbaxCtiPath);
-        bool success = (testResult == lbt::CameraTestResult::SUCCESS);
-        
-        // Map enum to string for response
-        std::string resultStr;
-        std::string errorDetail;
-        switch (testResult) {
-            case lbt::CameraTestResult::SUCCESS:
-                resultStr = "online";
-                break;
-            case lbt::CameraTestResult::ERROR_NOT_FOUND:
-                resultStr = "offline";
-                errorDetail = "Camera not found or not connected";
-                break;
-            case lbt::CameraTestResult::ERROR_NOT_READY:
-                resultStr = "offline";
-                errorDetail = "Camera found but not ready";
-                break;
-            case lbt::CameraTestResult::ERROR_NO_FRAME:
-                resultStr = "offline";
-                errorDetail = "Camera ready but cannot get frame";
-                break;
-            case lbt::CameraTestResult::ERROR_PATH_NOT_EXIST:
-                resultStr = "offline";
-                errorDetail = "File path does not exist";
-                break;
-            case lbt::CameraTestResult::ERROR_EXCEPTION:
-                resultStr = "offline";
-                errorDetail = "Exception occurred during test";
-                break;
-            case lbt::CameraTestResult::ERROR_NOT_BUILT:
-                resultStr = "offline";
-                errorDetail = "Required feature not built (e.g., VimbaX disabled)";
-                break;
-            case lbt::CameraTestResult::ERROR_UNKNOWN_TYPE:
-                resultStr = "offline";
-                errorDetail = "Unknown camera type";
-                break;
-            default:
-                resultStr = "offline";
-                errorDetail = "Unknown error";
-                break;
-        }
-        
-        // Prepare response
-        Json::Value result;
-        result["camUID"] = camUID;
-        result["testResult"] = resultStr;
-        result["success"] = success;
-        if (!errorDetail.empty()) {
-            result["errorDetail"] = errorDetail;
-        }
-        
-        auto resp = HttpResponse::newHttpJsonResponse(result);
-        resp->setStatusCode(k200OK);
-        cb(resp);
-    } catch (const std::exception& e) {
-        Json::Value err; 
-        err["error"] = std::string("Camera test failed: ") + e.what();
-        auto resp = HttpResponse::newHttpJsonResponse(err);
-        resp->setStatusCode(k500InternalServerError);
-        cb(resp);
-    }
+        LOG_INFO << "[DoController::cameraTest Thread] Thread exiting";
+    });
+    
+    testThread.detach(); // Let it run independently
+    LOG_INFO << "[DoController::cameraTest] Request handler returning, test running in background";
 }

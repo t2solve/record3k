@@ -2,6 +2,8 @@
 
 #include <string>
 #include <filesystem>
+#include <vector>
+#include <memory>
 
 namespace lbt {
 
@@ -19,25 +21,54 @@ struct VimbaXStatus {
     std::string transportLayerPath;    // Path to transport layer files used
 };
 
-// VimbaX-specific camera manager functionality
+// Information about a detected camera
+struct VimbaXCameraInfo {
+    std::string id;           // Camera ID
+    std::string name;         // Camera name
+    std::string serial;       // Serial number
+    std::string model;        // Model name
+    std::string macAddress;   // MAC address (for GigE cameras)
+    std::string interfaceId;  // Interface ID
+};
+
+// Singleton VimbaX system manager
+// Keeps the VimbaX system initialized throughout the application lifetime
 class CameraManagerVimbax {
 public:
-    /**
-     * \brief Check if VimbaX is ready to use (built and initialized)
-     * 
-     * This method will:
-     * 1. Check if VimbaX is built into the binary
-     * 2. Initialize VmbSystem with the specified transport layer file
-     * 3. Query version information
-     * 4. Enumerate transport layers, interfaces, and cameras
-     * 5. Properly shutdown VmbSystem
-     * 
-     * \param[in] ctiFilePath Path to a specific .cti file.
-     *                        If empty, uses GENICAM_GENTL64_PATH environment variable.
-     * 
-     * \returns VimbaXStatus containing detailed information about VimbaX system state
-     */
-    static VimbaXStatus testVimbaxReadyToUse(const std::filesystem::path& ctiFilePath = "");
+    // Get singleton instance
+    static CameraManagerVimbax& getInstance();
+    
+    // Initialize the VimbaX system (call once at application startup)
+    bool startup(const std::filesystem::path& ctiFilePath = "");
+    
+    // Shutdown the VimbaX system (call once at application shutdown)
+    void shutdown();
+    
+    // Check if the system is initialized and ready
+    bool isReady() const;
+    
+    // Get system status information
+    VimbaXStatus getStatus() const;
+    
+    // Get list of currently detected cameras (may change over time with network discovery)
+    std::vector<VimbaXCameraInfo> getCameras();
+    
+    // Update camera list (triggers a new query)
+    void updateCameraList();
+    
+    // Check if initial discovery is complete
+    bool isDiscoveryComplete() const;
+    
+    // Prevent copying
+    CameraManagerVimbax(const CameraManagerVimbax&) = delete;
+    CameraManagerVimbax& operator=(const CameraManagerVimbax&) = delete;
+
+private:
+    CameraManagerVimbax() = default;
+    ~CameraManagerVimbax();
+    
+    class Impl;
+    std::unique_ptr<Impl> pImpl_;
 };
 
 } // namespace lbt

@@ -13,8 +13,10 @@ void FrameMemoryObject::setTimestampFromVimba(uint64_t tsNs) noexcept { m_timest
 
 void FrameMemoryObject::touchTimestampNow() noexcept {
     using namespace std::chrono;
-    const auto now = steady_clock::now().time_since_epoch();
-    m_timestampNs = static_cast<uint64_t>(duration_cast<nanoseconds>(now).count());
+    // Use steady_clock for monotonic time since system start
+    auto now = steady_clock::now();
+    auto ns = duration_cast<nanoseconds>(now.time_since_epoch());
+    m_timestampNs = static_cast<uint64_t>(ns.count());
 }
 
 FrameMemoryObject::FrameMemoryObject() 

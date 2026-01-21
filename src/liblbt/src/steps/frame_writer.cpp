@@ -7,15 +7,11 @@
 FrameWriterCPUStep::FrameWriterCPUStep() : frameCounter_(0) {}
 
 
-// Helper: format nanoseconds timestamp as string (YYYYMMDD_HHMMSS_mmm)
+// Helper: format nanoseconds timestamp as string (just use the raw nanosecond value)
 static std::string formatTimestamp(uint64_t tsNs) {
-    if (tsNs == 0) return "notimestamp";
-    std::time_t t = tsNs / 1000000000ULL;
-    uint64_t ms = (tsNs / 1000000ULL) % 1000ULL;
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&t), "%Y%m%d_%H%M%S")
-       << "_" << std::setfill('0') << std::setw(3) << ms;
-    return ss.str();
+    if (tsNs == 0) return "0";
+    // Simply return the nanosecond value as a string
+    return std::to_string(tsNs);
 }
 
 FrameMemoryObject FrameWriterCPUStep::process(const FrameMemoryObject& input, const FilterConfig& config) {

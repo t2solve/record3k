@@ -3,6 +3,8 @@
 #include <iomanip>
 #include <sstream>
 #include <ctime>
+#include <thread>
+#include <chrono>
 
 namespace lbt {
 
@@ -85,57 +87,79 @@ CameraTestResult CameraManager::testCamera(const api::CameraInfo& cam, const std
     if (cam.cameraType == "TYPE_CAM_VIMBA") {
         std::cout << "[CameraManager] TYPE_CAM_VIMBA camera test" << std::endl;
 #ifdef VIMBAX_ENABLED
-        // First check if VimbaX system is ready
-        std::cout << "[CameraManager] Using VimbaX .cti path: " << (vimbaxCtiPath.empty() ? "(default)" : vimbaxCtiPath) << std::endl;
-        auto vimbaxStatus = CameraManagerVimbax::testVimbaxReadyToUse(vimbaxCtiPath);
-        if (!vimbaxStatus.isBuilt) {
-            std::cerr << "[CameraManager] ERROR: VimbaX not built - " << vimbaxStatus.errorMessage << std::endl;
-            return CameraTestResult::ERROR_NOT_BUILT;
-        }
-        if (!vimbaxStatus.startupSuccess) {
-            std::cerr << "[CameraManager] ERROR: VimbaX startup failed - " << vimbaxStatus.errorMessage << std::endl;
+        // Get VimbaX singleton (should already be initialized at app startup)
+        auto& vimbaxMgr = CameraManagerVimbax::getInstance();
+        
+        std::cout << "[CameraManager] Checking if VimbaX system is ready..." << std::endl;
+        // Check if system is ready
+        if (!vimbaxMgr.isReady()) {
+            std::cerr << "[CameraManager] ERROR: VimbaX system not ready" << std::endl;
+            std::cerr << "[CameraManager] System may still be initializing in background" << std::endl;
             return CameraTestResult::ERROR_NOT_READY;
         }
+        std::cout << "[CameraManager] VimbaX system is ready" << std::endl;
         
-        std::cout << "[CameraManager] VimbaX system ready (v" << vimbaxStatus.versionMajor 
-                  << "." << vimbaxStatus.versionMinor << "." << vimbaxStatus.versionPatch 
-                  << ", " << vimbaxStatus.cameraCount << " camera(s) detected)" << std::endl;
+        // Check if initial discovery is complete to avoid blocking
+        if (!vimbaxMgr.isDiscoveryComplete()) {
+            std::cerr << "[CameraManager] ERROR: VimbaX camera discovery still in progress" << std::endl;
+            std::cerr << "[CameraManager] Background thread is still discovering cameras" << std::endl;
+            std::cerr << "[CameraManager] Please wait a moment and try again" << std::endl;
+            return CameraTestResult::ERROR_NOT_READY;
+        }
+        std::cout << "[CameraManager] Camera discovery is complete" << std::endl;
+        
+        // Note: We skip updateCameraList() and getCameras() to avoid blocking on mutex
+        // If background thread is still discovering cameras, we'll just try to open the camera directly
+        std::cout << "[CameraManager] Skipping camera list query to avoid blocking" << std::endl;
+        std::cout << "[CameraManager] ======================================" << std::endl;
+        std::cout << "[CameraManager] Attempting to test camera:" << std::endl;
+        std::cout << "[CameraManager]   - camUID: " << cam.camUID << std::endl;
+        std::cout << "[CameraManager]   - MAC address: " << cam.macAddress << std::endl;
+        std::cout << "[CameraManager]   - Description: " << (cam.description ? *cam.description : "N/A") << std::endl;
+        std::cout << "[CameraManager] ======================================" << std::endl;
+        std::cout << "[CameraManager] NOTE: camUID is not the VimbaX serial number!" << std::endl;
+        std::cout << "[CameraManager] Will try matching by MAC address, then fallback to any camera" << std::endl;
         
         try {
-            // Try by serial (camUID) first
-            std::cout << "[CameraManager] Trying to open by serial: " << cam.camUID << std::endl;
-            {
-                VimbaXFrameSource src_by_serial(cam.camUID, "", false);
-                if (src_by_serial.isReady()) {
-                    std::cout << "[CameraManager] Camera ready via serial" << std::endl;
-                    auto frame = src_by_serial.nextFrame();
+            // Try by MAC address first (most reliable for GigE cameras)
+            if (!cam.macAddress.empty() && cam.macAddress != "N/A") {
+                std::cout << "[CameraManager] Attempting to open camera by MAC address: " << cam.macAddress << std::endl;
+                VimbaXFrameSource src_by_mac("", cam.macAddress, false);
+                std::cout << "[CameraManager] VimbaXFrameSource created, checking if ready..." << std::endl;
+                if (src_by_mac.isReady()) {
+                    std::cout << "[CameraManager] Camera ready via MAC, acquiring frame..." << std::endl;
+                    auto frame = src_by_mac.nextFrame();
                     if (frame != nullptr) {
-                        std::cout << "[CameraManager] SUCCESS: Got frame via serial" << std::endl;
+                        std::cout << "[CameraManager] SUCCESS: Got frame via MAC address" << std::endl;
                         return CameraTestResult::SUCCESS;
                     } else {
-                        std::cerr << "[CameraManager] ERROR: Camera ready but no frame via serial" << std::endl;
+                        std::cerr << "[CameraManager] ERROR: Camera ready but no frame via MAC" << std::endl;
                     }
                 } else {
-                    std::cout << "[CameraManager] Camera not ready via serial, trying MAC address" << std::endl;
+                    std::cout << "[CameraManager] Camera not ready via MAC address" << std::endl;
                 }
+            } else {
+                std::cout << "[CameraManager] No valid MAC address, skipping MAC-based lookup" << std::endl;
             }
             
-            // Fallback: try by interface/MAC
-            std::cout << "[CameraManager] Trying to open by MAC: " << cam.macAddress << std::endl;
-            VimbaXFrameSource src_by_iface("", cam.macAddress, false);
-            if (!src_by_iface.isReady()) {
-                std::cerr << "[CameraManager] ERROR: Camera not ready via MAC address" << std::endl;
+            // Fallback: try with empty strings (will use first available camera)
+            std::cout << "[CameraManager] Attempting to open first available camera (empty serial/MAC)" << std::endl;
+            VimbaXFrameSource src_any("", "", false);
+            std::cout << "[CameraManager] VimbaXFrameSource created, checking if ready..." << std::endl;
+            if (!src_any.isReady()) {
+                std::cerr << "[CameraManager] ERROR: No camera available" << std::endl;
                 return CameraTestResult::ERROR_NOT_READY;
             }
             
-            std::cout << "[CameraManager] Camera ready via MAC" << std::endl;
-            auto frame = src_by_iface.nextFrame();
+            std::cout << "[CameraManager] Camera ready, acquiring frame..." << std::endl;
+            auto frame = src_any.nextFrame();
+            std::cout << "[CameraManager] nextFrame() returned" << std::endl;
             if (frame == nullptr) {
-                std::cerr << "[CameraManager] ERROR: Camera ready but no frame via MAC" << std::endl;
+                std::cerr << "[CameraManager] ERROR: Camera ready but no frame" << std::endl;
                 return CameraTestResult::ERROR_NO_FRAME;
             }
             
-            std::cout << "[CameraManager] SUCCESS: Got frame via MAC address" << std::endl;
+            std::cout << "[CameraManager] SUCCESS: Got frame from camera" << std::endl;
             return CameraTestResult::SUCCESS;
         } catch (const std::exception& e) {
             std::cerr << "[CameraManager] EXCEPTION in VimbaX test: " << e.what() << std::endl;
