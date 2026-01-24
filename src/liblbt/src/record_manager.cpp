@@ -365,23 +365,46 @@ std::optional<std::filesystem::path> RecordManager::pack() {
     }
     
     try {
-        // Create data/files directory if it doesn't exist
-        std::filesystem::path archiveDir = "data/files";
+        // Create archive directory (now using data/files/bin for packed archives)
+        std::filesystem::path archiveDir = "data/files/bin";
         std::filesystem::create_directories(archiveDir);
         
         // Archive filename
         std::string archiveName = "file-rec-" + m_config.recordUID + ".tar.gz";
         std::filesystem::path archivePath = archiveDir / archiveName;
         
-        // Build tar command
-        // tar -czf <archive> -C <parent_dir> <dir_name>
+        // Security validation: check recordUID for command injection attempts
+        if (m_config.recordUID.find('\'') != std::string::npos ||
+            m_config.recordUID.find('"') != std::string::npos ||
+            m_config.recordUID.find('$') != std::string::npos ||
+            m_config.recordUID.find('`') != std::string::npos ||
+            m_config.recordUID.find(';') != std::string::npos ||
+            m_config.recordUID.find('|') != std::string::npos ||
+            m_config.recordUID.find('&') != std::string::npos ||
+            m_config.recordUID.find('\n') != std::string::npos ||
+            m_config.recordUID.find('\r') != std::string::npos) {
+            std::cerr << "[RecordManager] Security: Invalid characters in recordUID" << std::endl;
+            m_state = State::FAILURE;
+            return std::nullopt;
+        }
+        
+        // Get parent directory and directory name
         std::string parentDir = m_recordDir.parent_path().string();
         std::string dirName = m_recordDir.filename().string();
         
+        // Security validation: ensure paths don't contain dangerous characters
+        if (parentDir.find('\'') != std::string::npos || parentDir.find('"') != std::string::npos ||
+            dirName.find('\'') != std::string::npos || dirName.find('"') != std::string::npos) {
+            std::cerr << "[RecordManager] Security: Invalid characters in path" << std::endl;
+            m_state = State::FAILURE;
+            return std::nullopt;
+        }
+        
+        // Build tar command with quoted arguments to prevent injection
         std::stringstream cmd;
-        cmd << "tar -czf " << archivePath.string() 
-            << " -C " << parentDir 
-            << " " << dirName;
+        cmd << "tar -czf '" << archivePath.string() << "'"
+            << " -C '" << parentDir << "'"
+            << " '" << dirName << "'";
         
         std::cout << "[RecordManager] Packing: " << cmd.str() << std::endl;
         

@@ -7,6 +7,7 @@
 #include <liblbt/factory/frame_source_factory.h>
 #include <liblbt/pipeline_config_loader.h>
 #include <liblbt/record_manager.h>
+#include <liblbt/file_manager.h>
 #include <ctime>
 #include <chrono>
 #include <iomanip>
@@ -102,7 +103,7 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
             //     return;
             // }
             
-            // Generate unique record UID
+            // Generate unique record UID (without "file-rec-" prefix - RecordManager adds it)
             std::string recordUID = makeUID("cal");
             
             // create a processing pipeline
@@ -113,7 +114,10 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
             // Add a frame writer step
             pipeline.push_back(ProcessStepFactory::createFrameWriter(mode));
             FilterConfig frameWriterConfig;
-            std::string frameOutputDir = "/tmp/record3k/" + recordUID + "/frames";
+            // Path is managed by FileManager and RecordManager
+            // RecordManager will add "file-rec-" prefix: outputDir/file-rec-{recordUID}/frames
+            std::string frameOutputDir = lbt::FileManager::instance().getTempOutputPath().string() 
+                                        + "/file-rec-" + recordUID + "/frames";
             frameWriterConfig.setParameter("output_dir", frameOutputDir);
             frameWriterConfig.setParameter("format", "jpg");
             configs.push_back(frameWriterConfig);
@@ -132,10 +136,13 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
             recordConfig.targetFPS = 2;          
             recordConfig.recordUID = recordUID;
             recordConfig.cameraUID = camUID;  // Set camera UID for locking
-            recordConfig.outputDir = "/tmp/record3k";
+            recordConfig.outputDir = lbt::FileManager::instance().getTempOutputPath().string();
             
             // Create RecordManager instance (must live as long as recording runs)
-            auto recorder = std::make_unique<lbt::RecordManager>(std::move(recordConfig));
+            auto recorder = std::make_shared<lbt::RecordManager>(std::move(recordConfig));
+            
+            // Register with FileManager for automatic packing when complete
+            lbt::FileManager::instance().registerRecording(recordUID, recorder, camUID);
             
             LOG_INFO << "[DoController::cameraCalibrate Thread] Initial state: " << recorder->getStateString();
             
@@ -171,7 +178,8 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
             
             LOG_INFO << "[DoController::cameraCalibrate Thread] Recording completed with state: " << recorder->getStateString();
             
-            // TODO: Pack the recording and save calibration metadata
+            // Auto-pack the recording and create FileInfo entry
+            lbt::FileManager::instance().checkAndPackCompletedRecordings();
             
         } catch (const std::exception& e) {
             LOG_ERROR << "[DoController::cameraCalibrate Thread] Exception: " << e.what();

@@ -4,6 +4,7 @@
 #include <drogon/drogon.h>
 #include <trantor/utils/Logger.h>
 #include <api/runtime/app_config.h>
+#include <liblbt/file_manager.h>
 #endif
 
 #include <QCoreApplication>
@@ -145,6 +146,20 @@ int main(int argc, char* argv[])
         return 1;
     }
     LOG_INFO << "Data path validation successful";
+    
+    // Create required directory structure
+    std::error_code ec;
+    std::string tmpDir = "/tmp/record3k";
+    std::filesystem::create_directories(tmpDir, ec);
+    //std::filesystem::create_directories(api::AppConfig::instance().getDataRootPath() / "files" / "bin", ec);
+    
+    // Initialize FileManager with centralized path configuration
+    std::string tempOutputPath = tmpDir;  // Could be made configurable
+    lbt::FileManager::instance().initialize(
+        api::AppConfig::instance().getDataRootPath(),
+        tempOutputPath
+    );
+    LOG_INFO << "FileManager initialized";
     
     // Initialize VimbaX system in background thread to avoid blocking server startup
     #ifdef VIMBAX_ENABLED

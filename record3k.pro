@@ -20,6 +20,7 @@ SUBDIRS = \
     src/liblbt \
     #src/test3 \
     #src/test4 \
+    src/test5 \
     #src/pipelineviewer #\
     #src/debugcameraload \
 
@@ -27,6 +28,7 @@ SUBDIRS = \
 #define deps
 src/test3.depends = src/liblbt
 src/test4.depends = src/liblbt
+src/test5.depends = src/liblbt
 src/pipelineviewer.depends = src/liblbt
 src/debugcameraload.depends = src/liblbt
 
