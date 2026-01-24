@@ -131,6 +131,7 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
             recordConfig.totalTimeSeconds = 30.0;  
             recordConfig.targetFPS = 2;          
             recordConfig.recordUID = recordUID;
+            recordConfig.cameraUID = camUID;  // Set camera UID for locking
             recordConfig.outputDir = "/tmp/record3k";
             
             // Create RecordManager instance (must live as long as recording runs)

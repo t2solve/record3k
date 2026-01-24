@@ -1,4 +1,5 @@
 #include <liblbt/record_manager.h>
+#include <liblbt/record_manager_locker.h>
 #include <liblbt/processing_pipeline.h>
 #include <liblbt/frame_memory_object.h>
 
@@ -24,6 +25,11 @@ RecordManager::RecordManager(RecordConfig config)
 
 RecordManager::~RecordManager() {
     stop();
+    
+    // Release camera lock if still held
+    if (!m_config.cameraUID.empty()) {
+        RecordManagerLocker::instance().unlock(m_config.cameraUID);
+    }
 }
 
 bool RecordManager::start() {
@@ -53,10 +59,27 @@ bool RecordManager::start() {
         return false;
     }
     
+    // Try to acquire camera lock
+    if (!m_config.cameraUID.empty()) {
+        if (!RecordManagerLocker::instance().tryLock(m_config.cameraUID, m_config.recordUID)) {
+            std::cerr << "[RecordManager] Camera " << m_config.cameraUID << " is already in use" << std::endl;
+            auto lockInfo = RecordManagerLocker::instance().getLockInfo(m_config.cameraUID);
+            if (lockInfo) {
+                std::cerr << "[RecordManager] Locked by recording " << lockInfo->recordUID 
+                          << " (state: " << lockInfo->state << ")" << std::endl;
+            }
+            m_state = State::FAILURE;
+            return false;
+        }
+    }
+    
     // Create output directory structure
     if (!createOutputStructure()) {
         std::cerr << "[RecordManager] Failed to create output directory structure" << std::endl;
         m_state = State::FAILURE;
+        if (!m_config.cameraUID.empty()) {
+            RecordManagerLocker::instance().unlock(m_config.cameraUID);
+        }
         return false;
     }
     
@@ -85,7 +108,17 @@ void RecordManager::stop() {
     if (m_recordingThread && m_recordingThread->joinable()) {
         std::cout << "[RecordManager] Waiting for recording thread to finish..." << std::endl;
         m_recordingThread->join();
-        std::cout << "[RecordManager] Recording thread stopped" << std::endl;
+        std::cout << "[RecordManager] Recording thread finished" << std::endl;
+    }
+    
+    // Update state in locker and release lock
+    if (!m_config.cameraUID.empty()) {
+        if (m_state == State::FAILURE) {
+            RecordManagerLocker::instance().updateState(m_config.cameraUID, "error", "Recording failed");
+        } else if (m_state == State::STOPPED) {
+            RecordManagerLocker::instance().updateState(m_config.cameraUID, "stopped", "");
+        }
+        RecordManagerLocker::instance().unlock(m_config.cameraUID);
     }
 }
 
@@ -123,6 +156,9 @@ void RecordManager::recordingLoop() {
             if (!frame) {
                 std::cerr << "[RecordManager] Failed to acquire frame, stopping" << std::endl;
                 m_state = State::FAILURE;
+                if (!m_config.cameraUID.empty()) {
+                    RecordManagerLocker::instance().updateState(m_config.cameraUID, "error", "Failed to acquire frame");
+                }
                 break;
             }
             
@@ -137,6 +173,9 @@ void RecordManager::recordingLoop() {
             } catch (const std::exception& e) {
                 std::cerr << "[RecordManager] Pipeline processing error: " << e.what() << std::endl;
                 m_state = State::FAILURE;
+                if (!m_config.cameraUID.empty()) {
+                    RecordManagerLocker::instance().updateState(m_config.cameraUID, "error", std::string("Pipeline error: ") + e.what());
+                }
                 break;
             }
             
@@ -203,6 +242,11 @@ void RecordManager::recordingLoop() {
     } catch (const std::exception& e) {
         std::cerr << "[RecordManager] Recording loop exception: " << e.what() << std::endl;
         m_state = State::FAILURE;
+        
+        // Update error state in locker
+        if (!m_config.cameraUID.empty()) {
+            RecordManagerLocker::instance().updateState(m_config.cameraUID, "error", e.what());
+        }
     }
 }
 

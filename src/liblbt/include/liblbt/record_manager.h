@@ -44,6 +44,7 @@ public:
         std::optional<std::string> calibrationFile;     // Optional calibration XML path
         std::optional<std::string> studyFile;           // Optional study JSON path
         std::string recordUID;                           // Unique identifier for this record
+        std::string cameraUID;                           // Camera identifier (for locking)
         std::string outputDir = "/tmp/record3k";        // Base output directory
     };
 
