@@ -10,6 +10,11 @@
 
 namespace lbt {
 
+CameraCalibrator::CameraCalibrator()
+    : CameraCalibrator(Config{})
+{
+}
+
 CameraCalibrator::CameraCalibrator(Config config)
     : m_config(std::move(config))
 {
@@ -442,7 +447,7 @@ void CameraCalibrator::saveCameraParams(
     
     // Timestamp
     std::time_t now = std::time(nullptr);
-    struct std::tm* timeinfo = std::localtime(&now);
+    std::tm* timeinfo = std::localtime(&now);
     char buffer[80];
     std::strftime(buffer, sizeof(buffer), "%c", timeinfo);
     

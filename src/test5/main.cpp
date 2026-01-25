@@ -10,7 +10,7 @@
 #include <thread>
 #include <optional>
 #include <cstdlib>
-#include <json/json.h>
+//#include <json/json.h>
 #include <fstream>
 
 
@@ -37,13 +37,13 @@ int main(int argc, char* argv[]) {
     std::cout << "=== Calibration Example ===" << std::endl;
     
     lbt::CameraCalibrator::Config config;
-    config.boardSize = cv::Size(4, 5);
-    config.squareSize = 0.025f;
+    config.boardSize = cv::Size(12, 12);
+    config.squareSize = 1.5f;
     config.writeExtrinsics = true;
     config.writePoints = true;
 
     lbt::CameraCalibrator calibrator(config);
-    auto result = calibrator.calibrate("/tmp/record3k/file-rec-cal-1769256756/", "camera.yml");
+    auto result = calibrator.calibrate("/tmp/record3k/file-rec-cal-1769373249/", "camera.yml");
 
     if (result.success) {
         std::cout << "Calibration succeeded! Error: " << result.avgReprojectionError << std::endl;

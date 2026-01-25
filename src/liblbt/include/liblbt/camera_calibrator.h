@@ -76,10 +76,15 @@ public:
     };
     
     /**
+     * Default constructor with default configuration
+     */
+    CameraCalibrator();
+    
+    /**
      * Constructor
      * @param config Calibration configuration
      */
-    explicit CameraCalibrator(Config config = Config());
+    explicit CameraCalibrator(Config config);
     
     /**
      * Run calibration on a recorded session

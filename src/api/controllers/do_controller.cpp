@@ -12,12 +12,22 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <random>
 
 using namespace drogon;
 using namespace api;
 
 static std::string makeUID(const std::string &prefix) {
-    return prefix + "-" + std::to_string(std::time(nullptr));
+    // Use milliseconds since epoch + random component for better uniqueness
+    auto now = std::chrono::system_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    
+    // Add a random component to ensure uniqueness even within the same millisecond
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    static std::uniform_int_distribution<> dis(1000, 9999);
+    
+    return prefix + "-" + std::to_string(ms) + "-" + std::to_string(dis(gen));
 }
 
 static std::string getCurrentTimeISO8601() {
@@ -180,6 +190,11 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
             
             // Auto-pack the recording and create FileInfo entry
             lbt::FileManager::instance().checkAndPackCompletedRecordings();
+            
+            // Explicitly release the RecordManager to free camera resources immediately
+            LOG_INFO << "[DoController::cameraCalibrate Thread] Releasing RecordManager to free camera";
+            recorder.reset();
+            LOG_INFO << "[DoController::cameraCalibrate Thread] RecordManager released";
             
         } catch (const std::exception& e) {
             LOG_ERROR << "[DoController::cameraCalibrate Thread] Exception: " << e.what();

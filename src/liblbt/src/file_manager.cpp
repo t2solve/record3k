@@ -85,6 +85,19 @@ std::optional<std::filesystem::path> FileManager::packRecording(const std::strin
         cameraUID = it->second.cameraUID;
     }
     
+    // RAII guard to ensure RecordManager is always released when function exits
+    auto cleanup = [this, &recordUID]() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto it = m_recordings.find(recordUID);
+        if (it != m_recordings.end() && it->second.manager) {
+            std::cout << "[FileManager] Releasing RecordManager for " << recordUID << " to free camera resources" << std::endl;
+            it->second.manager.reset();
+            it->second.packed = true;
+            std::cout << "[FileManager] RecordManager released for " << recordUID << std::endl;
+        }
+    };
+    std::shared_ptr<void> cleanupGuard(nullptr, [&cleanup](void*) { cleanup(); });
+    
     if (!manager) {
         std::cerr << "[FileManager] RecordManager not available for: " << recordUID << std::endl;
         return std::nullopt;
@@ -180,10 +193,14 @@ std::optional<std::filesystem::path> FileManager::packRecording(const std::strin
     
     // Create FileInfo entry
     std::string fileUID = "file-rec-" + recordUID;
-    if (createFileInfo(fileUID, *archivePath, recordUID, cameraUID)) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_recordings[recordUID].packed = true;
+    bool fileInfoCreated = createFileInfo(fileUID, *archivePath, recordUID, cameraUID);
+    
+    // Note: RecordManager cleanup is handled automatically by the RAII guard at function exit
+    
+    if (fileInfoCreated) {
         std::cout << "[FileManager] Successfully packed and registered: " << fileUID << std::endl;
+    } else {
+        std::cerr << "[FileManager] Warning: Packed but failed to create FileInfo for: " << fileUID << std::endl;
     }
     
     return archivePath;
