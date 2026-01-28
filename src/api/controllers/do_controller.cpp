@@ -3,6 +3,7 @@
 #include <api/runtime/info_data_manager.h>
 #include <api/runtime/app_config.h>
 #include <liblbt/camera_manager.h>
+#include <liblbt/camera_calibrator.h>
 #include <liblbt/factory/model_factory.h>
 #include <liblbt/factory/frame_source_factory.h>
 #include <liblbt/pipeline_config_loader.h>
@@ -126,9 +127,10 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
             FilterConfig frameWriterConfig;
             // Path is managed by FileManager and RecordManager
             // RecordManager will add "file-rec-" prefix: outputDir/file-rec-{recordUID}/frames
-            std::string frameOutputDir = lbt::FileManager::instance().getTempOutputPath().string() 
-                                        + "/file-rec-" + recordUID + "/frames";
-            frameWriterConfig.setParameter("output_dir", frameOutputDir);
+            std::string outputDir = lbt::FileManager::instance().getTempOutputPath().string() + "/file-rec-" + recordUID + "/";
+            std::string frameOutputDir = outputDir + "frames";
+            
+                                        frameWriterConfig.setParameter("output_dir", frameOutputDir);
             frameWriterConfig.setParameter("format", "jpg");
             configs.push_back(frameWriterConfig);
             
@@ -171,9 +173,9 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             LOG_INFO << "[DoController::cameraCalibrate Thread] Recording started: " << recorder->getStateString();
 
-            // Send immediate response that calibration started
+            // // Send immediate response that calibration started
             std::string now = getCurrentTimeISO8601();
-            CalibrationInfo c{recordUID, camUID, desc, "started", now, "file-cal-placeholder"};
+            CalibrationInfo c{recordUID, camUID, desc, "started", now, "file-rec-" + recordUID};
             
             auto resp = HttpResponse::newHttpJsonResponse(c.toJson());
             resp->setStatusCode(k202Accepted);
@@ -187,6 +189,61 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
             }
             
             LOG_INFO << "[DoController::cameraCalibrate Thread] Recording completed with state: " << recorder->getStateString();
+            
+            //do calibration
+            //TODO: load calibration config from AppConfig
+            lbt::CameraCalibrator::Config config;
+            config.boardSize = cv::Size(12, 12);
+            config.squareSize = 1.5f;
+            config.writeExtrinsics = true;
+            config.writePoints = true;
+
+            lbt::CameraCalibrator calibrator(config);
+
+            auto result = calibrator.calibrate(outputDir, "others/camera_calibration_full.xml", "camera_calibration_short.xml");
+            //print the whole result
+            LOG_INFO << "[DoController::cameraCalibrate Thread] Calibration result: " << result.toString();
+            if (result.success) {
+                LOG_INFO << "[DoController::cameraCalibrate Thread] Calibration succeeded! Error: " << result.avgReprojectionError;
+                //we should package the calibration result file as well
+                std::string calUID = makeUID("cal");
+                //TODO check why created 2 time s ? 
+                auto caliInfoResult = lbt::ModelFactory::makeCalibrationInfo(
+                    calUID,
+                    camUID,
+                    desc,
+                    result.success ? "completed" : "failed",
+                    now,
+                    "file-rec-" + recordUID
+                );
+                
+                if (!caliInfoResult.ok()) {
+                    LOG_ERROR << "[DoController::cameraCalibrate Thread] Failed to create CalibrationInfo: " << caliInfoResult.error();
+                } else {
+                    api::CalibrationInfo caliInfo = caliInfoResult.value();
+                    
+                    // Convert to JSON and store using put(key, value)
+                    Json::Value caliJson = caliInfo.toJson();
+                    if (infoDataManager().put("calibrations", calUID, caliJson)) {
+                        LOG_INFO << "[DoController::cameraCalibrate Thread] Stored calibration info in JsonStore for: " << calUID;
+                    } else {
+                        LOG_ERROR << "[DoController::cameraCalibrate Thread] Failed to store calibration info in JsonStore for: " << calUID;
+                    }
+                    
+                    //verify by reading back
+                    auto storedCalJsonOpt = infoDataManager().get("calibrations", calUID);
+                    if (storedCalJsonOpt) {
+                        LOG_INFO << "[DoController::cameraCalibrate Thread] Stored calibration info verified in JsonStore for: " << calUID;
+                    } else {
+                        LOG_ERROR << "[DoController::cameraCalibrate Thread] Failed to verify stored calibration info in JsonStore for: " << calUID;
+                    }
+                }
+
+            } else {
+                LOG_ERROR << "[DoController::cameraCalibrate Thread] Calibration failed: " << result.errorMessage;
+            }
+
+           
             
             // Auto-pack the recording and create FileInfo entry
             lbt::FileManager::instance().checkAndPackCompletedRecordings();
@@ -226,12 +283,180 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
     double durationMs = (json && json->isMember("durationInMS")) ? (*json)["durationInMS"].asDouble() : 1000.0;
     std::string calibrationUID = (json && json->isMember("calibrationUID")) ? (*json)["calibrationUID"].asString() : "cal-latest";
     std::string pipelineUID = (json && json->isMember("pipelineUID")) ? (*json)["pipelineUID"].asString() : "pipe-default";
+    std::string studyInfoUID = (json && json->isMember("studyInfoUID")) ? (*json)["studyInfoUID"].asString() : "study-unknown";
     std::string description = (json && json->isMember("description")) ? (*json)["description"].asString() : "record session";
 
-    RecordInfo r{makeUID("rec"), calibrationUID, false, pipelineUID, "study-unknown", "started", durationMs/1000.0, "2025-11-07T12:03:00Z", "", "file-rec-placeholder"};
-    auto resp = HttpResponse::newHttpJsonResponse(r.toJson());
-    resp->setStatusCode(k201Created);
-    cb(resp);
+    //TODO check if all parameters are valid
+    //test 1 validate duration
+    if (durationMs <= 0.0)  {
+        Json::Value err;
+        err["error"] = "Invalid durationInMS, must be positive";
+        auto resp = HttpResponse::newHttpJsonResponse(err);
+        resp->setStatusCode(k400BadRequest);
+        cb(resp);
+        return;
+    } 
+    
+    //try to load the pipeline to validate it exists
+    auto pipeConfig = PipelineConfigLoader::loadFromJSON(pipelineUID);
+    if (pipeConfig.steps.empty()) {
+        Json::Value err;
+        err["error"] = "Pipeline not found or has no steps: " + pipelineUID;
+        auto resp = HttpResponse::newHttpJsonResponse(err);
+        resp->setStatusCode(k400BadRequest);
+        cb(resp);
+        return;
+    }
+
+    std::string recordUID = makeUID("rec");
+    RecordInfo recordInfoObj{recordUID, calibrationUID, false, pipelineUID, studyInfoUID, "started", durationMs/1000.0, "2025-11-07T12:03:00Z", "", "file-rec-placeholder"};
+    // auto resp = HttpResponse::newHttpJsonResponse(r.toJson());
+    // resp->setStatusCode(k201Created);
+    // cb(resp);
+
+
+
+    LOG_INFO << "[DoController::recordStart] Starting recording for: " << recordUID;
+    
+     // Run calibration in background thread to avoid blocking API and keep RecordManager alive
+    std::thread recordThread([cb = std::move(cb), camUID, description, recordUID, recordInfoObj, durationMs, calibrationUID, pipelineUID]() mutable {
+        LOG_INFO << "[DoController::recordStart Thread] Background thread started for camera: " << camUID;
+        
+        try {
+            // Load camera info from InfoDataManager (uses cached JsonStore)
+            LOG_DEBUG << "[DoController::recordStart Thread] Loading camera info for: " << camUID;
+            auto camJsonOpt = infoDataManager().get("cameras", camUID);
+            if (!camJsonOpt) {
+                LOG_ERROR << "[DoController::recordStart Thread] Camera not found: " << camUID;
+                Json::Value err;
+                err["error"] = "Camera not found: " + camUID;
+                auto resp = HttpResponse::newHttpJsonResponse(err);
+                resp->setStatusCode(k404NotFound);
+                cb(resp);
+                return;
+            }
+            
+            // Parse JSON to CameraInfo struct
+            auto camInfoResult = lbt::ModelFactory::fromJsonCamera(*camJsonOpt);
+            if (!camInfoResult.ok()) {
+                LOG_ERROR << "[DoController::recordStart Thread] Invalid camera data: " << camInfoResult.error();
+                Json::Value err;
+                err["error"] = "Invalid camera data: " + camInfoResult.error();
+                auto resp = HttpResponse::newHttpJsonResponse(err);
+                resp->setStatusCode(k500InternalServerError);
+                cb(resp);
+                return;
+            }
+            
+            api::CameraInfo camInfo = camInfoResult.value();
+            LOG_INFO << "[DoController::recordStart Thread] Camera loaded - Type: " << camInfo.cameraType;
+
+            // Create frame source from camera info
+            auto frameSource = lbt::FrameSourceFactory::createFromCameraInfo(camInfo, true);
+            if (frameSource == nullptr) {
+                LOG_ERROR << "[DoController::recordStart Thread] Frame source creation failed for camera: " << camUID;
+                Json::Value err;
+                err["error"] = "Frame source creation failed";
+                auto resp = HttpResponse::newHttpJsonResponse(err);
+                resp->setStatusCode(k500InternalServerError);
+                cb(resp);
+                return;
+            }
+
+            // Check if frame source is ready
+            if (!frameSource->isReady()) {
+                LOG_ERROR << "[DoController::recordStart Thread] Frame source is NOT ready for camera: " << camUID;
+                Json::Value err;
+                err["error"] = "Camera not ready";
+                auto resp = HttpResponse::newHttpJsonResponse(err);
+                resp->setStatusCode(k500InternalServerError);
+                cb(resp);
+                return;
+            }
+
+            // TODO load from pipelineUID
+            // Load default recording pipelin
+            std::string defaultPipelineUID = "pipe_default_calibration_01.json";   
+            auto pipeConfig = PipelineConfigLoader::loadFromJSON(defaultPipelineUID);
+            if (pipeConfig.steps.empty()) {
+                LOG_ERROR << "[DoController::recordStart Thread] Failed to load pipeline or pipeline has no steps";
+                Json::Value err;
+                err["error"] = "Pipeline load failed or empty";
+                auto resp = HttpResponse::newHttpJsonResponse(err);
+                resp->setStatusCode(k500InternalServerError);
+                cb(resp);
+                return;
+            }
+            
+           
+            // Create RecordManager configuration
+            lbt::RecordManager::RecordConfig recordConfig;
+            recordConfig.frameSource = std::move(frameSource);
+            recordConfig.pipeline = pipeConfig;
+            recordConfig.totalTimeSeconds = durationMs / 1000.0;  
+            recordConfig.targetFPS = 10;          
+            recordConfig.recordUID = recordUID;
+            recordConfig.cameraUID = camUID;  // Set camera UID for locking
+            recordConfig.outputDir = lbt::FileManager::instance().getTempOutputPath().string();
+            
+            // Create RecordManager instance (must live as long as recording runs)
+            auto recorder = std::make_shared<lbt::RecordManager>(std::move(recordConfig));
+            
+            // Register with FileManager for automatic packing when complete
+            lbt::FileManager::instance().registerRecording(recordUID, recorder, camUID);
+            
+            LOG_INFO << "[DoController::recordStart Thread] Initial state: " << recorder->getStateString();
+            
+            // Start recording
+            if (!recorder->start()) {
+                LOG_ERROR << "[DoController::recordStart Thread] Failed to start recording for camera: " << camUID;
+                Json::Value err;
+                err["error"] = "Recording start failed";
+                auto resp = HttpResponse::newHttpJsonResponse(err);
+                resp->setStatusCode(k500InternalServerError);
+                cb(resp);
+                return;
+            }
+            
+            // Wait for recording to start
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            LOG_INFO << "[DoController::recordStart Thread] Recording started: " << recorder->getStateString();
+
+  
+            //create response
+            auto resp = HttpResponse::newHttpJsonResponse(recordInfoObj.toJson());
+            resp->setStatusCode(k202Accepted);
+            cb(resp);
+            
+            LOG_INFO << "[DoController::recordStart Thread] Response sent, waiting for recording to complete...";
+            
+            // Wait for recording to complete (blocking in background thread is OK)
+            while (recorder->getState() == lbt::RecordManager::State::RECORDING) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            }
+            
+            LOG_INFO << "[DoController::recordStart Thread] Recording completed with state: " << recorder->getStateString();
+            
+
+            // Auto-pack the recording and create FileInfo entry
+            lbt::FileManager::instance().checkAndPackCompletedRecordings();
+        
+            
+        } catch (const std::exception& e) {
+            LOG_ERROR << "[DoController::recordStart Thread] Exception: " << e.what();
+            Json::Value err;
+            err["error"] = std::string("Recording failed: ") + e.what();
+            auto resp = HttpResponse::newHttpJsonResponse(err);
+            resp->setStatusCode(k500InternalServerError);
+            cb(resp);
+        }
+        
+        LOG_INFO << "[DoController::recordStart Thread] Thread exiting";
+    });
+    
+    recordThread.detach(); // Let it run independently
+    LOG_INFO << "[DoController::recordStart] Request handler returning, recording running in background";
+
 }
 
 void DoController::cameraRecordStop(const HttpRequestPtr&, std::function<void (const HttpResponsePtr &)> && cb, const std::string &recordUID) {
@@ -301,6 +526,7 @@ void DoController::cameraTest(const HttpRequestPtr& req, std::function<void (con
             switch (testResult) {
                 case lbt::CameraTestResult::SUCCESS:
                     resultStr = "online";
+                    //TODO update json last seen timestamp
                     break;
                 case lbt::CameraTestResult::ERROR_NOT_FOUND:
                     resultStr = "offline";

@@ -104,6 +104,27 @@ std::optional<Json::Value> InfoDataManager::get(const std::string& category, con
     return v;
 }
 
+bool InfoDataManager::put(const std::string& category, const std::string& key, const Json::Value& value) {
+    std::lock_guard lk(mtx_);
+    LOG_DEBUG << "Putting " << category << "/" << key;
+    auto it = cats_.find(category);
+    if (it == cats_.end()) {
+        LOG_WARN << "Category not found: " << category;
+        return false;
+    }
+    if (!validateWithFactory(category, value)) {
+        LOG_WARN << "Validation failed for " << category << "/" << key;
+        return false;
+    }
+    bool success = it->second.store->put(key, value);
+    if (success) {
+        LOG_INFO << "Successfully stored " << category << "/" << key;
+    } else {
+        LOG_ERROR << "Failed to store " << category << "/" << key;
+    }
+    return success;
+}
+
 InfoDataManager& infoDataManager() {
     std::lock_guard lk(gInitMtx);
     if (!gInfoMgr) {

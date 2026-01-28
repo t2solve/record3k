@@ -15,6 +15,7 @@ public:
     void stop();
     Json::Value list(const std::string& category);
     std::optional<Json::Value> get(const std::string& category, const std::string& key);
+    bool put(const std::string& category, const std::string& key, const Json::Value& value);
 private:
     struct Cat { std::unique_ptr<JsonStore> store; };
     std::filesystem::path baseDir_;

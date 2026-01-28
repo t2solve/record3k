@@ -7,6 +7,7 @@
 #include <vector>
 #include <optional>
 #include <filesystem>
+#include <sstream>
 
 namespace lbt {
 
@@ -73,6 +74,8 @@ public:
         cv::Size imageSize;
         int validFrames = 0;
         std::string errorMessage;
+        
+        std::string toString() const;
     };
     
     /**
@@ -89,11 +92,13 @@ public:
     /**
      * Run calibration on a recorded session
      * @param recordDir Path to recording directory (e.g., /tmp/record3k/file-rec-cal-123/)
-     * @param outputFilename Output YAML/XML filename (e.g., "camera.yml")
+     * @param outputFilenameFull Full output YAML/XML filename with all calibration data (e.g., "camera.yml")
+     * @param outputFilenameCompact Compact output YAML/XML filename with only essential parameters (e.g., "camera_compact.yml")
      * @return Calibration result with success status and parameters
      */
     CalibrationResult calibrate(const std::filesystem::path& recordDir,
-                               const std::string& outputFilename = "camera.yml");
+                               const std::string& outputFilenameFull = "camera.yml",
+                               const std::string& outputFilenameCompact = "camera_compact.yml");
     
     /**
      * Load images from frames directory
@@ -113,6 +118,14 @@ private:
     
     // Calibration computation
     void calcBoardCorners(std::vector<cv::Point3f>& corners);
+    
+    // Save methods
+    void saveCompactCameraParams(
+        const std::string& filename,
+        const cv::Mat& cameraMatrix,
+        const cv::Mat& distCoeffs,
+        const cv::Mat& extrinsicParameters,
+        double avgReprojectionError);
     double computeReprojectionErrors(
         const std::vector<std::vector<cv::Point3f>>& objectPoints,
         const std::vector<std::vector<cv::Point2f>>& imagePoints,

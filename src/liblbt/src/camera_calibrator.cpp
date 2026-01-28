@@ -6,9 +6,25 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <sstream>
 #include <ctime>
 
 namespace lbt {
+
+std::string CameraCalibrator::CalibrationResult::toString() const {
+    std::ostringstream oss;
+    oss << "CalibrationResult{";
+    oss << "success=" << (success ? "true" : "false");
+    if (success) {
+        oss << ", avgReprojectionError=" << avgReprojectionError;
+        oss << ", validFrames=" << validFrames;
+        oss << ", imageSize=" << imageSize.width << "x" << imageSize.height;
+    } else {
+        oss << ", errorMessage=\"" << errorMessage << "\"";
+    }
+    oss << "}";
+    return oss.str();
+}
 
 CameraCalibrator::CameraCalibrator()
     : CameraCalibrator(Config{})
@@ -79,7 +95,8 @@ std::vector<std::string> CameraCalibrator::loadImageList(const std::filesystem::
 
 CameraCalibrator::CalibrationResult CameraCalibrator::calibrate(
     const std::filesystem::path& recordDir,
-    const std::string& outputFilename)
+    const std::string& outputFilenameFull,
+    const std::string& outputFilenameCompact)
 {
     CalibrationResult result;
     
@@ -162,10 +179,10 @@ CameraCalibrator::CalibrationResult CameraCalibrator::calibrate(
         std::cout << "[CameraCalibrator] Calibration succeeded!" << std::endl;
         std::cout << "[CameraCalibrator] Average reprojection error: " << result.avgReprojectionError << std::endl;
         
-        // Save calibration parameters
-        std::filesystem::path outputPath = recordDir / outputFilename;
+        // Save full calibration parameters
+        std::filesystem::path outputPathFull = recordDir / outputFilenameFull;
         saveCameraParams(
-            outputPath.string(),
+            outputPathFull.string(),
             imageSize,
             result.cameraMatrix,
             result.distCoeffs,
@@ -177,7 +194,33 @@ CameraCalibrator::CalibrationResult CameraCalibrator::calibrate(
             result.avgReprojectionError
         );
         
-        std::cout << "[CameraCalibrator] Saved calibration to: " << outputPath << std::endl;
+        std::cout << "[CameraCalibrator] Saved full calibration to: " << outputPathFull << std::endl;
+        
+        // Prepare extrinsic parameters matrix (combine rvecs and tvecs)
+        cv::Mat extrinsicParameters;
+        if (!result.rvecs.empty() && !result.tvecs.empty()) {
+            extrinsicParameters = cv::Mat(static_cast<int>(result.rvecs.size()), 6, result.rvecs[0].type());
+            for (size_t i = 0; i < result.rvecs.size(); i++) {
+                cv::Mat r = extrinsicParameters(cv::Range(i, i + 1), cv::Range(0, 3));
+                cv::Mat t = extrinsicParameters(cv::Range(i, i + 1), cv::Range(3, 6));
+                result.rvecs[i].reshape(1, 1).copyTo(r);
+                result.tvecs[i].reshape(1, 1).copyTo(t);
+            }
+        }
+        
+        // Save compact calibration parameters (only essentials for processing)
+        std::filesystem::path outputPathCompact = recordDir / outputFilenameCompact;
+        saveCompactCameraParams(
+            outputPathCompact.string(),
+            result.cameraMatrix,
+            result.distCoeffs,
+            extrinsicParameters,
+            result.avgReprojectionError
+        );
+        
+        std::cout << "[CameraCalibrator] Saved compact calibration to: " << outputPathCompact << std::endl;
+
+     
     } else {
         result.errorMessage = "Calibration failed";
         std::cerr << "[CameraCalibrator] " << result.errorMessage << std::endl;
@@ -517,6 +560,46 @@ void CameraCalibrator::saveCameraParams(
     // Object points (if refined)
     if (!newObjPoints.empty()) {
         fs << "grid_points" << newObjPoints;
+    }
+    
+    fs.release();
+}
+
+void CameraCalibrator::saveCompactCameraParams(
+    const std::string& filename,
+    const cv::Mat& cameraMatrix,
+    const cv::Mat& distCoeffs,
+    const cv::Mat& extrinsicParameters,
+    double avgReprojectionError)
+{
+    cv::FileStorage fs(filename, cv::FileStorage::WRITE);
+    
+    // Essential parameters for lens correction and plane projection
+    fs << "camera_matrix" << cameraMatrix;
+    fs << "distortion_coefficients" << distCoeffs;
+    
+    // Store extrinsic parameters if available
+    if (!extrinsicParameters.empty()) {
+        fs << "extrinsic_parameters" << extrinsicParameters;
+    }
+    
+    // Quality metric
+    fs << "avg_reprojection_error" << avgReprojectionError;
+    
+    // Extract individual parameters for easy access
+    if (!cameraMatrix.empty() && cameraMatrix.rows == 3 && cameraMatrix.cols == 3) {
+        fs << "fx" << cameraMatrix.at<double>(0, 0);
+        fs << "fy" << cameraMatrix.at<double>(1, 1);
+        fs << "cx" << cameraMatrix.at<double>(0, 2);
+        fs << "cy" << cameraMatrix.at<double>(1, 2);
+    }
+    
+    if (!distCoeffs.empty() && distCoeffs.total() >= 5) {
+        fs << "k1" << distCoeffs.at<double>(0);
+        fs << "k2" << distCoeffs.at<double>(1);
+        fs << "p1" << distCoeffs.at<double>(2);
+        fs << "p2" << distCoeffs.at<double>(3);
+        fs << "k3" << distCoeffs.at<double>(4);
     }
     
     fs.release();

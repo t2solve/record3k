@@ -250,9 +250,9 @@ class BugTrackerApp {
                 individualScientificName: scientificName,
                 weightInMg: weightInMg
             };
-            console.log('Sending to /add/studyMetaInfo:', studyPayload);
+            console.log('Sending to /add/study_meta_info:', studyPayload);
             
-            const studyResponse = await fetch(`${API_BASE_URL}/add/studyMetaInfo`, {
+            const studyResponse = await fetch(`${API_BASE_URL}/add/study_meta_info`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(studyPayload)

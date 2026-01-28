@@ -36,6 +36,20 @@ using namespace lbt;
 int main(int argc, char* argv[]) {
     std::cout << "=== Calibration Example ===" << std::endl;
     
+    // Parse command line arguments
+    std::string inputPath = "/tmp/record3k/file-rec-cal-1769373249/";
+    std::string outputFile = "camera.yml";
+    
+    if (argc > 1) {
+        inputPath = argv[1];
+    }
+    if (argc > 2) {
+        outputFile = argv[2];
+    }
+    
+    std::cout << "Input path: " << inputPath << std::endl;
+    std::cout << "Output file: " << outputFile << std::endl;
+    
     lbt::CameraCalibrator::Config config;
     config.boardSize = cv::Size(12, 12);
     config.squareSize = 1.5f;
@@ -43,7 +57,7 @@ int main(int argc, char* argv[]) {
     config.writePoints = true;
 
     lbt::CameraCalibrator calibrator(config);
-    auto result = calibrator.calibrate("/tmp/record3k/file-rec-cal-1769373249/", "camera.yml");
+    auto result = calibrator.calibrate(inputPath, outputFile);
 
     if (result.success) {
         std::cout << "Calibration succeeded! Error: " << result.avgReprojectionError << std::endl;
