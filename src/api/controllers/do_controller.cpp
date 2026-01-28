@@ -298,7 +298,8 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
     } 
     
     //try to load the pipeline to validate it exists
-    auto pipeConfig = PipelineConfigLoader::loadFromJSON(pipelineUID);
+    std::string staticPipeLineFile = "data/pipelines/pipe-default-42.json";
+    auto pipeConfig = PipelineConfigLoader::loadFromJSON(staticPipeLineFile);
     if (pipeConfig.steps.empty()) {
         Json::Value err;
         err["error"] = "Pipeline not found or has no steps: " + pipelineUID;
@@ -309,7 +310,7 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
     }
 
     std::string recordUID = makeUID("rec");
-    RecordInfo recordInfoObj{recordUID, calibrationUID, false, pipelineUID, studyInfoUID, "started", durationMs/1000.0, "2025-11-07T12:03:00Z", "", "file-rec-placeholder"};
+    RecordInfo recordInfoObj{recordUID, calibrationUID, false, "pipe-default-42", studyInfoUID, "started", durationMs/1000.0, "2025-11-07T12:03:00Z", "", "file-rec-placeholder"};
     // auto resp = HttpResponse::newHttpJsonResponse(r.toJson());
     // resp->setStatusCode(k201Created);
     // cb(resp);
@@ -374,14 +375,13 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
                 return;
             }
 
-            // TODO load from pipelineUID
-            // Load default recording pipelin
-            std::string defaultPipelineUID = "pipe_default_calibration_01.json";   
-            auto pipeConfig = PipelineConfigLoader::loadFromJSON(defaultPipelineUID);
+            // Load pipeline from pipelineUID (already validated earlier)
+            LOG_INFO << "[DoController::recordStart Thread] Loading pipeline: " << pipelineUID;
+            auto pipeConfig = PipelineConfigLoader::loadFromJSON(pipelineUID);
             if (pipeConfig.steps.empty()) {
-                LOG_ERROR << "[DoController::recordStart Thread] Failed to load pipeline or pipeline has no steps";
+                LOG_ERROR << "[DoController::recordStart Thread] Failed to load pipeline or pipeline has no steps: " << pipelineUID;
                 Json::Value err;
-                err["error"] = "Pipeline load failed or empty";
+                err["error"] = "Pipeline load failed or empty: " + pipelineUID;
                 auto resp = HttpResponse::newHttpJsonResponse(err);
                 resp->setStatusCode(k500InternalServerError);
                 cb(resp);

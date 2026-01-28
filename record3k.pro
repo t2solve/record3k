@@ -18,7 +18,8 @@ export(LOG_LEVEL)
 
 SUBDIRS = \
     src/liblbt \
-    #src/test3 \
+    #src/test2 \
+    src/test3 \
     #src/test4 \
     src/test5 \
     #src/pipelineviewer #\
@@ -26,6 +27,7 @@ SUBDIRS = \
 
     
 #define deps
+src/test2.depends = src/liblbt
 src/test3.depends = src/liblbt
 src/test4.depends = src/liblbt
 src/test5.depends = src/liblbt

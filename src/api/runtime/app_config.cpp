@@ -75,8 +75,8 @@ bool AppConfig::validateDataPath(std::vector<std::string>& errors) const {
     
     // Check required config files
     std::vector<std::string> requiredFiles = {
-        "pipelines/default_recording.json",
-        "pipelines/default_calibration.json"
+        "pipelines/pipe-default-42.json",
+        
     };
     
     for (const auto& file : requiredFiles) {

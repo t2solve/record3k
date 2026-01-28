@@ -242,12 +242,12 @@ int main(int argc, char* argv[])
     //     std::cout << "[test3] Using camera: " << firstCam.name << " (S/N: " << firstCam.serial << ")" << std::endl;
     //     frameSource = std::make_shared<VimbaXFrameSource>(firstCam.serial, firstCam.interfaceId, true);
     // }
-    // else {
-    //     std::cout << "No cameras found; using disk image frame source instead.\n";
-    //     frameSource = std::make_shared<DiskImageFrameSource>(image_dir, "*.jpg");
-    // }
+    
+    std::cout << "No cameras found; using disk image frame source instead.\n";
+    auto frameSource = std::make_shared<DiskImageFrameSource>(image_dir, "*.jpg");
+    
     // Default camera
-    auto frameSource = std::make_shared<OpenCVFrameSource>(0);
+    //auto frameSource = std::make_shared<OpenCVFrameSource>(0);
 
 
 
@@ -360,6 +360,7 @@ int main(int argc, char* argv[])
 
     //we save the pipeline configuration to XML for future use
     PipelineConfigLoader::saveToXML("pipeline_test3_config.xml", pipeConfig);
+    PipelineConfigLoader::saveToJSON("pipeline_test3_config.json", pipeConfig);
     //Load pipeline from XML
     //Configure processing pipeline
     //auto pipeConfig = PipelineConfigLoader::loadFromXML("config.xml");
