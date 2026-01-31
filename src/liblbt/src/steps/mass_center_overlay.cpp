@@ -1,5 +1,6 @@
 #include "../../include/liblbt/steps/mass_center_overlay.h"
 #include <iostream>
+#include <sstream>
 
 // Calculate the mass center of the convex hull from a contour selection
 static cv::Point2f calcCenterFromContours(const std::vector<std::vector<cv::Point>>& contourSelection)
@@ -35,19 +36,21 @@ FrameMemoryObject MassCenterOverlayCPUStep::process(const FrameMemoryObject& inp
         // Ensure we have an image on CPU
         cv::Mat img = input.getCpuMat().clone();
         if (img.empty()) {
-            std::cerr << "[MassCenterOverlay] WARNING: Input frame is empty, passing through" << std::endl;
+            logWarning("[MassCenterOverlay] Input frame is empty, passing through");
             return input;
         }
         // Retrieve contours from metadata (produced by ContourAreaFilter)
         if (!input.hasMetadata("filtered_contours")) {
-            std::cerr << "[MassCenterOverlay] Missing metadata 'filtered_contours'; ensure ContourAreaFilter runs before this step.\n";
+            logWarning("[MassCenterOverlay] Missing metadata 'filtered_contours'; ensure ContourAreaFilter runs before this step.");
             return FrameMemoryObject(img);
         }
         std::vector<std::vector<cv::Point>> contours;
         try {
             contours = input.getMetadata<std::vector<std::vector<cv::Point>>>("filtered_contours");
         } catch (const std::exception& e) {
-            std::cerr << "[MassCenterOverlay] Metadata type mismatch for 'filtered_contours': " << e.what() << "\n";
+            std::stringstream ss;
+            ss << "[MassCenterOverlay] Metadata type mismatch for 'filtered_contours': " << e.what();
+            logError(ss.str());
             return FrameMemoryObject(img);
         }
 
@@ -59,14 +62,16 @@ FrameMemoryObject MassCenterOverlayCPUStep::process(const FrameMemoryObject& inp
             }
             cv::circle(img, center, 10, cv::Scalar(0, 0, 255), -1);
         } else {
-            std::cerr << "[MassCenterOverlay] Center could not be calculated (no or invalid contours).\n";
+            logWarning("[MassCenterOverlay] Center could not be calculated (no or invalid contours).");
         }
         //construct a new FrameMemoryObject with metadata
         FrameMemoryObject frameResult(img);
         frameResult.setMetadata<cv::Point2f>("mass_center_point", center);
         return frameResult;
     } catch (const std::exception& e) {
-        std::cerr << "[MassCenterOverlay] Exception: " << e.what() << ", passing through input\n";
+        std::stringstream ss;
+        ss << "[MassCenterOverlay] Exception: " << e.what() << ", passing through input";
+        logError(ss.str());
         return input;
     }
 }

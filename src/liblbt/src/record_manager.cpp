@@ -200,6 +200,26 @@ void RecordManager::recordingLoop() {
         }
     };
     
+    // Create step logger that writes to log file
+    m_stepLogger = std::make_shared<StepLogger>([&logToFile](StepLogger::Level level, const std::string& message) {
+        const char* prefix;
+        switch (level) {
+            case StepLogger::Level::DEBUG:   prefix = "[DEBUG] "; break;
+            case StepLogger::Level::INFO:    prefix = "[INFO] "; break;
+            case StepLogger::Level::WARNING: prefix = "[WARN] "; break;
+            case StepLogger::Level::ERROR:   prefix = "[ERROR] "; break;
+            default:                          prefix = "[LOG] "; break;
+        }
+        logToFile(std::string(prefix) + message);
+    });
+    
+    // Inject logger into all pipeline steps
+    for (auto& step : m_config.pipeline.steps) {
+        if (step) {
+            step->setLogger(m_stepLogger);
+        }
+    }
+    
     try {
         // Calculate timing parameters
         auto interval = std::chrono::milliseconds(static_cast<int>(1000.0 / m_config.targetFPS));

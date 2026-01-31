@@ -8,6 +8,7 @@
 #include <liblbt/factory/frame_source_factory.h>
 #include <liblbt/pipeline_config_loader.h>
 #include <liblbt/record_manager.h>
+#include <liblbt/calibration_injector.h>
 #include <liblbt/file_manager.h>
 #include <ctime>
 #include <chrono>
@@ -418,7 +419,51 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
             
             LOG_INFO << "[DoController::recordStart][TID:" << threadId << "] Pipeline loaded successfully with " << pipeConfig.steps.size() << " steps";
             
-           
+            // Load calibration data
+            // First, look up the calibration info from InfoDataManager to get the actual fileUID
+            auto calInfoJson = infoDataManager().get("calibrations", calibrationUID);
+            if (!calInfoJson) {
+                LOG_ERROR << "[DoController::recordStart][TID:" << threadId << "] Calibration not found in InfoDataManager: " << calibrationUID;
+                Json::Value err;
+                err["error"] = "Calibration not found: " + calibrationUID;
+                auto resp = HttpResponse::newHttpJsonResponse(err);
+                resp->setStatusCode(k404NotFound);
+                cb(resp);
+                return;
+            }
+            
+            // Extract fileUID from calibration info
+            std::string fileUID = (*calInfoJson).get("fileUID", "").asString();
+            if (fileUID.empty()) {
+                LOG_ERROR << "[DoController::recordStart][TID:" << threadId << "] Calibration has no fileUID: " << calibrationUID;
+                Json::Value err;
+                err["error"] = "Calibration missing fileUID: " + calibrationUID;
+                auto resp = HttpResponse::newHttpJsonResponse(err);
+                resp->setStatusCode(k500InternalServerError);
+                cb(resp);
+                return;
+            }
+            
+            LOG_INFO << "[DoController::recordStart][TID:" << threadId << "] Loading calibration from fileUID: " << fileUID;
+            auto calibData = lbt::CalibrationInjector::loadFromArchive(fileUID);
+            
+            if (calibData.valid) {
+                LOG_INFO << "[DoController::recordStart][TID:" << threadId << "] Calibration loaded successfully!";
+                
+                // Inject into pipeline
+                int modifiedSteps = lbt::CalibrationInjector::injectIntoPipeline(pipeConfig, calibData);
+                LOG_INFO << "[DoController::recordStart][TID:" << threadId << "] Injected calibration into " << modifiedSteps << " pipeline steps";
+            } else {
+                LOG_ERROR << "[DoController::recordStart][TID:" << threadId << "] " << calibData.errorMessage;
+                LOG_ERROR << "[DoController::recordStart][TID:" << threadId << "] Failed to load calibration: " << calibData.errorMessage;
+                Json::Value err;
+                err["error"] = "Calibration injection into pipeline failed: " + calibData.errorMessage;
+                auto resp = HttpResponse::newHttpJsonResponse(err);
+                resp->setStatusCode(k500InternalServerError);
+                cb(resp);
+                return;
+            }
+
             // Create RecordManager configuration
             lbt::RecordManager::RecordConfig recordConfig;
             recordConfig.frameSource = std::move(frameSource);

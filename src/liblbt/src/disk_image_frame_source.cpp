@@ -66,12 +66,14 @@ DiskImageFrameSource::DiskImageFrameSource(const std::string& directory, const s
     // Preload up to DISK_IMAGE_MAX_PRELOAD images into RAM for profiling stability
     const size_t preloadCap = DISK_IMAGE_MAX_PRELOAD;
     images_.reserve(std::min(preloadCap, collected.size()));
+    imagePaths_.reserve(std::min(preloadCap, collected.size()));
     size_t count = 0;
     for (auto& kv : collected) {
         if (count >= preloadCap) break;
         cv::Mat img = cv::imread(kv.second, cv::IMREAD_UNCHANGED);
         if (!img.empty()) {
             images_.push_back(std::move(img));
+            imagePaths_.push_back(std::filesystem::path(kv.second));
             ++count;
         }
     }

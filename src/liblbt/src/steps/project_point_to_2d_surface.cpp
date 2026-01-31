@@ -2,6 +2,7 @@
 #include <opencv2/calib3d.hpp>
 #include <iostream>
 #include <filesystem>
+#include <sstream>
 
 
 
@@ -11,22 +12,23 @@ bool ProjectPointTo2DSurfaceCPUStep::initDuringFirstStart(cv::Mat cameraMatrix, 
         return true;
     }
     if (cameraMatrix.empty()) {
-        std::cerr << "[ProjectPointTo2DSurface] Missing cameraMatrix during initialization.\n";
+        logError("[ProjectPointTo2DSurface] Missing cameraMatrix during initialization.");
         return false;
     }
     if (distCoeffs.empty() ) {
-        std::cerr << "[ProjectPointTo2DSurface] Missing distCoeffs during initialization.\n";
+        logError("[ProjectPointTo2DSurface] Missing distCoeffs during initialization.");
         return false;
     }
     if (extrinsic_parameters.empty()) {
-        std::cerr << "[ProjectPointTo2DSurface] Missing extrinsic_parameters during initialization.\n";
+        logError("[ProjectPointTo2DSurface] Missing extrinsic_parameters during initialization.");
         return false;
     }
     // Extract the first pose (matches foo.cpp example semantics)
     int i = 0;
     if (extrinsic_parameters.rows < 1 || extrinsic_parameters.cols < 6) {
-        std::cerr << "[ProjectPointTo2DSurface] extrinsic_parameters has unexpected shape: "
-                  << extrinsic_parameters.size() << "\n";
+        std::stringstream ss;
+        ss << "[ProjectPointTo2DSurface] extrinsic_parameters has unexpected shape: " << extrinsic_parameters.size();
+        logError(ss.str());
         return false;
     }
     //get the parts from extrinsic_parameters
@@ -107,18 +109,18 @@ FrameMemoryObject ProjectPointTo2DSurfaceCPUStep::process(const FrameMemoryObjec
             config.getParameter("distortion_coefficients", distCoeffs);
             config.getParameter("extrinsics_combined", extrinsicsCombined);
             if (!initDuringFirstStart(cameraMatrix, distCoeffs, extrinsicsCombined)) {
-                std::cerr << "[ProjectPointTo2DSurface] Failed to initialize with calibration data; skipping projection.\n";
+                logError("[ProjectPointTo2DSurface] Failed to initialize with calibration data; skipping projection.");
                 return FrameMemoryObject(img);
             }
         }
 
         if (m_inverseH.empty()) {
-            std::cerr << "[ProjectPointTo2DSurface] Inverse homography matrix is empty; skipping projection.\n";
+            logError("[ProjectPointTo2DSurface] Inverse homography matrix is empty; skipping projection.");
             return FrameMemoryObject(img);
         }
 
         if (!input.hasMetadata("mass_center_point")) {
-            std::cerr << "[ProjectPointTo2DSurface] Missing metadata 'mass_center_point'; ensure MassCenterOverlay runs before this step.\n";
+            logWarning("[ProjectPointTo2DSurface] Missing metadata 'mass_center_point'; ensure MassCenterOverlay runs before this step.");
             return FrameMemoryObject(img);
         }
 
@@ -126,7 +128,9 @@ FrameMemoryObject ProjectPointTo2DSurfaceCPUStep::process(const FrameMemoryObjec
         try {
             center = input.getMetadata<cv::Point2f>("mass_center_point");
         } catch (const std::exception& e) {
-            std::cerr << "[ProjectPointTo2DSurface] Metadata type mismatch for 'mass_center_point': " << e.what() << "\n";
+            std::stringstream ss;
+            ss << "[ProjectPointTo2DSurface] Metadata type mismatch for 'mass_center_point': " << e.what();
+            logError(ss.str());
             return FrameMemoryObject(img);
         }
 
@@ -141,7 +145,9 @@ FrameMemoryObject ProjectPointTo2DSurfaceCPUStep::process(const FrameMemoryObjec
 
         return out;
     } catch (const std::exception& e) {
-        std::cerr << "[ProjectPointTo2DSurface] Exception: " << e.what() << "\n";
+        std::stringstream ss;
+        ss << "[ProjectPointTo2DSurface] Exception: " << e.what();
+        logError(ss.str());
         return FrameMemoryObject();
     }
 }

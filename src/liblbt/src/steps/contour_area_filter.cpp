@@ -1,4 +1,5 @@
 #include "contour_area_filter.h"
+#include <sstream>
 
 FrameMemoryObject ContourAreaFilterCPUStep::process(const FrameMemoryObject& input, const FilterConfig& config) {
     if (input.isEmpty()) {
@@ -38,14 +39,20 @@ FrameMemoryObject ContourAreaFilterCPUStep::process(const FrameMemoryObject& inp
     }
     //we do need a test here if no courts are left after filtering?
     if (filteredContours.empty() ) {
-        std::cerr << "[ContourAreaFilterCPUStep] Warning: No contours left after filtering with min_area=" 
-                  << minArea << " and max_area=" << maxArea << ".\n";
+        std::stringstream ss;
+        ss << "[ContourAreaFilterCPUStep] Warning: No contours left after filtering with min_area=" 
+           << minArea << " and max_area=" << maxArea;
+        logWarning(ss.str());
         if (originalCount > 0) {
-            std::cerr << "  Original contour count was " << originalCount << ".\n";
+            std::stringstream debugSs;
+            debugSs << "  Original contour count was " << originalCount;
+            logDebug(debugSs.str());
             //we iterate the original contours and print their areas
             for (size_t i = 0; i < contours.size(); ++i) {
                 double area = cv::contourArea(contours[i]);
-                std::cerr << "    Contour " << i << " area: " << area << "\n";
+                std::stringstream areaSs;
+                areaSs << "    Contour " << i << " area: " << area;
+                logDebug(areaSs.str());
             }   
         }
     }
@@ -99,12 +106,12 @@ bool ContourAreaFilterCUDAStep::isAvailable() const {
 
 FrameMemoryObject ContourAreaFilterCUDAStep::process(const FrameMemoryObject& input, const FilterConfig& config) {
     if (input.isEmpty()) {
-        std::cerr << "[ContourAreaFilterCUDAStep] WARNING: Input frame is empty, passing through" << std::endl;
+        logWarning("[ContourAreaFilterCUDAStep] Input frame is empty, passing through");
         return input;
     }
     
     if (!isAvailable()) {
-        std::cerr << "[ContourAreaFilterCUDAStep] WARNING: CUDA not available, passing through input frame" << std::endl;
+        logWarning("[ContourAreaFilterCUDAStep] CUDA not available, passing through input frame");
         return input;
     }
     
@@ -141,14 +148,20 @@ FrameMemoryObject ContourAreaFilterCUDAStep::process(const FrameMemoryObject& in
     }
     //we do need a test here if no courts are left after filtering?
     if (filteredContours.empty() ) {
-        std::cerr << "[ContourAreaFilterCPUStep] Warning: No contours left after filtering with min_area=" 
-                  << minArea << " and max_area=" << maxArea << ".\n";
+        std::stringstream ss;
+        ss << "[ContourAreaFilterCUDAStep] Warning: No contours left after filtering with min_area=" 
+           << minArea << " and max_area=" << maxArea;
+        logWarning(ss.str());
         if (originalCount > 0) {
-            std::cerr << "  Original contour count was " << originalCount << ".\n";    
+            std::stringstream debugSs;
+            debugSs << "  Original contour count was " << originalCount;
+            logDebug(debugSs.str());
             //we iterte the original contours and print their areas
             for (size_t i = 0; i < contours.size(); ++i) {
                 double area = cv::contourArea(contours[i]);
-                std::cerr << "    Contour " << i << " area: " << area << "\n";
+                std::stringstream areaSs;
+                areaSs << "    Contour " << i << " area: " << area;
+                logDebug(areaSs.str());
             }   
         }
     }

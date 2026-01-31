@@ -14,6 +14,7 @@
 #include <liblbt/process_step.h>
 #include <liblbt/filter_config.h>
 #include <liblbt/result_logger.h>
+#include <liblbt/step_logger.h>
 
 namespace lbt {
 
@@ -165,6 +166,9 @@ private:
     
     // Result logging
     std::unique_ptr<ResultLogger> m_resultLogger;
+    
+    // Step logger for pipeline steps
+    std::shared_ptr<StepLogger> m_stepLogger;
 };
 
 } // namespace lbt

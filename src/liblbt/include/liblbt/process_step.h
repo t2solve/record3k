@@ -2,6 +2,7 @@
 
 #include <opencv2/core.hpp>
 #include "frame_memory_object.h"
+#include "step_logger.h"
 #include <string>
 #include <map>
 #include <memory>
@@ -60,4 +61,30 @@ public:
     
     // Get preferred memory location for this step
     virtual MemoryLocation getPreferredMemoryLocation() const = 0;
+    
+    // Set logger for this step (optional, for centralized logging)
+    virtual void setLogger(std::shared_ptr<lbt::StepLogger> logger) {
+        m_logger = logger;
+    }
+    
+protected:
+    // Logger instance (nullptr if not set)
+    std::shared_ptr<lbt::StepLogger> m_logger;
+    
+    // Helper methods for logging (safe to call even if logger is null)
+    void logDebug(const std::string& message) const {
+        if (m_logger) m_logger->debug(message);
+    }
+    
+    void logInfo(const std::string& message) const {
+        if (m_logger) m_logger->info(message);
+    }
+    
+    void logWarning(const std::string& message) const {
+        if (m_logger) m_logger->warning(message);
+    }
+    
+    void logError(const std::string& message) const {
+        if (m_logger) m_logger->error(message);
+    }
 };

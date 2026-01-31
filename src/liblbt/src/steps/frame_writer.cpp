@@ -32,7 +32,7 @@ FrameMemoryObject FrameWriterCPUStep::process(const FrameMemoryObject& input, co
     std::filesystem::path outPath(outputDir);
     if (!std::filesystem::exists(outPath)) {
         std::filesystem::create_directories(outPath);
-        std::cout << "[FrameWriter] Created output directory: " << outPath << std::endl;
+        logInfo("[FrameWriter] Created output directory: " + outPath.string());
     }
     
     // Increment frame counter
@@ -43,10 +43,11 @@ FrameMemoryObject FrameWriterCPUStep::process(const FrameMemoryObject& input, co
     
     // Verify frame is valid before writing
     if (cpuFrame.empty()) {
-        std::cerr << "[FrameWriter] ERROR: Frame " << currentFrame << " is empty! "
-                  << "Input isEmpty=" << input.isEmpty() 
-                  << ", memoryLocation=" << static_cast<int>(input.getMemoryLocation())
-                  << std::endl;
+        std::stringstream ss;
+        ss << "[FrameWriter] ERROR: Frame " << currentFrame << " is empty! "
+           << "Input isEmpty=" << input.isEmpty() 
+           << ", memoryLocation=" << static_cast<int>(input.getMemoryLocation());
+        logError(ss.str());
         // Return input unchanged even on error
         return input;
     }
@@ -63,13 +64,13 @@ FrameMemoryObject FrameWriterCPUStep::process(const FrameMemoryObject& input, co
     // Write frame to disk
     try {
         if (!cv::imwrite(fullPath.string(), cpuFrame)) {
-            std::cerr << "[FrameWriter] Failed to write frame: " << fullPath << std::endl;
+            logError("[FrameWriter] Failed to write frame: " + fullPath.string());
         } else if (currentFrame % 100 == 0) {
             // Log progress every 100 frames
-            std::cout << "[FrameWriter] Wrote frame " << currentFrame << " to " << outputDir << std::endl;
+            logInfo("[FrameWriter] Wrote frame " + std::to_string(currentFrame) + " to " + outputDir);
         }
     } catch (const cv::Exception& e) {
-        std::cerr << "[FrameWriter] OpenCV exception writing frame: " << e.what() << std::endl;
+        logError("[FrameWriter] OpenCV exception writing frame: " + std::string(e.what()));
     }
     
     // Return input unchanged (pass-through)

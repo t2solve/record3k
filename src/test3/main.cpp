@@ -30,6 +30,7 @@
 #include <liblbt/vimbax_frame_source.h>
 #include <liblbt/camera_manager_vimbax.h>
 #include <liblbt/opencv_frame_source.h>
+#include <liblbt/calibration_injector.h>
 
 #ifdef VIMBAX_ENABLED
 // Minimal test function that directly uses VmbSystem like SDK example
@@ -206,8 +207,8 @@ std::optional<FilterConfig> loadCameraCalibration(const std::string& xmlPath,
 int main(int argc, char* argv[])
 {
       // Defaults: image directory and calibration file
-    std::string image_dir = "data-frames";
-    std::string calib_xml = "camera_calibration.xml";
+    std::string image_dir = "testset/frames";
+    std::string calib_xml = "testset/camera_calibration.xml";
     // Positional overrides if provided
     if (argc >= 2) image_dir = argv[1];
     if (argc >= 3) calib_xml = argv[2];
@@ -216,6 +217,8 @@ int main(int argc, char* argv[])
         std::cerr << "Defaults: image_directory='" << image_dir << "', calibration_xml='" << calib_xml << "'\n";
         return 0;
     }
+    std::cout << "[test3] Using image directory: " << image_dir << std::endl;
+    std::cout << "[test3] Using calibration XML: " << calib_xml << std::endl;
 
     // //we list all connected cameras using new CameraManagerVimbax
     // std::string ctiPath = "VimbaGigETL.cti"; // or provide full path
@@ -243,7 +246,7 @@ int main(int argc, char* argv[])
     //     frameSource = std::make_shared<VimbaXFrameSource>(firstCam.serial, firstCam.interfaceId, true);
     // }
     
-    std::cout << "No cameras found; using disk image frame source instead.\n";
+    //std::cout << "No cameras found; using disk image frame source instead.\n";
     auto frameSource = std::make_shared<DiskImageFrameSource>(image_dir, "*.jpg");
     
     // Default camera
@@ -265,106 +268,203 @@ int main(int argc, char* argv[])
             return -1;
     }
 
-    // we build the processing pipeline from by hand
-    // Create background subtraction pipeline
-    std::vector<std::shared_ptr<ProcessStep>> pipeline;
-    std::vector<FilterConfig> configs;
-    ProcessingMode mode = ProcessingMode::CUDA_PREFERRED;
+    // // we build the processing pipeline from by hand
+    // // Create background subtraction pipeline
+    // std::vector<std::shared_ptr<ProcessStep>> pipeline;
+    // std::vector<FilterConfig> configs;
+    // ProcessingMode mode = ProcessingMode::CUDA_PREFERRED;
     
-    // Step 1: Camera Calibration / Lens Correction
-    pipeline.push_back(ProcessStepFactory::createLensCorrection(mode));
-    cv::Mat cameraMatrix, distCoeffs, extrinsicsCombined;
-    std::optional<FilterConfig> lensConfig = loadCameraCalibration(calib_xml, cameraMatrix, distCoeffs, extrinsicsCombined);
-    if (lensConfig == std::nullopt) {
-        // No value returned
-        std::cerr << "No lens config available!" << std::endl;
-        return -1;
-    } else {
-        configs.push_back(*lensConfig);
-    }
+    // // Step 1: Camera Calibration / Lens Correction
+    // pipeline.push_back(ProcessStepFactory::createLensCorrection(mode));
+    // cv::Mat cameraMatrix, distCoeffs, extrinsicsCombined;
+    // std::optional<FilterConfig> lensConfig = loadCameraCalibration(calib_xml, cameraMatrix, distCoeffs, extrinsicsCombined);
+    // if (lensConfig == std::nullopt) {
+    //     // No value returned
+    //     std::cerr << "No lens config available!" << std::endl;
+    //     return -1;
+    // } else {
+    //     configs.push_back(*lensConfig);
+    // }
 
-    // Step 2: cut roi (circular crop)
-    pipeline.push_back(ProcessStepFactory::createROICircleCrop(mode));
-    FilterConfig roiConfig;
-    roiConfig.setParameter("center_x", 985);
-    roiConfig.setParameter("center_y", 725);
-    roiConfig.setParameter("radius", 700);
-    configs.push_back(roiConfig);
+    // // Step 2: cut roi (circular crop)
+    // pipeline.push_back(ProcessStepFactory::createROICircleCrop(mode));
+    // FilterConfig roiConfig;
+    // roiConfig.setParameter("center_x", 985);
+    // roiConfig.setParameter("center_y", 725);
+    // roiConfig.setParameter("radius", 700);
+    // configs.push_back(roiConfig);
     
-    // Step 3: background subtraction
-    pipeline.push_back(ProcessStepFactory::createBackgroundSubtractionMOG2(mode));
-    FilterConfig bgsConfig;
-    bgsConfig.setParameter("history", 500);
-    bgsConfig.setParameter("varThreshold", 16.0);
-    bgsConfig.setParameter("detectShadows", false);
-    configs.push_back(bgsConfig);
+    // // Step 3: background subtraction
+    // pipeline.push_back(ProcessStepFactory::createBackgroundSubtractionMOG2(mode));
+    // FilterConfig bgsConfig;
+    // bgsConfig.setParameter("history", 500);
+    // bgsConfig.setParameter("varThreshold", 16.0);
+    // bgsConfig.setParameter("detectShadows", false);
+    // configs.push_back(bgsConfig);
 
-    // Step 4: Binary Thresholding
-    pipeline.push_back(ProcessStepFactory::createBinaryThreshold(mode));
-    FilterConfig binaryConfig;
-    binaryConfig.setParameter("threshold", 80);
-    binaryConfig.setParameter("max_value", 255);
-    configs.push_back(binaryConfig);
+    // // Step 4: Binary Thresholding
+    // pipeline.push_back(ProcessStepFactory::createBinaryThreshold(mode));
+    // FilterConfig binaryConfig;
+    // binaryConfig.setParameter("threshold", 80);
+    // binaryConfig.setParameter("max_value", 255);
+    // configs.push_back(binaryConfig);
 
-    // Step 5: Morphology Close
-    pipeline.push_back(ProcessStepFactory::createMorphologyClose(mode));
-    FilterConfig morphConfig;
-    morphConfig.setParameter("ksize", int(15)); // kernel size
-    morphConfig.setParameter("shape", int(2));  // 0=RECT,1=CROSS,2=ELLIPSE
-    morphConfig.setParameter("iterations", int(2)); // number of iterations
-    configs.push_back(morphConfig);
+    // // Step 5: Morphology Close
+    // pipeline.push_back(ProcessStepFactory::createMorphologyClose(mode));
+    // FilterConfig morphConfig;
+    // morphConfig.setParameter("ksize", int(15)); // kernel size
+    // morphConfig.setParameter("shape", int(2));  // 0=RECT,1=CROSS,2=ELLIPSE
+    // morphConfig.setParameter("iterations", int(2)); // number of iterations
+    // configs.push_back(morphConfig);
 
-    // // Step 5: GaussianBlur (to reduce noise before contour detection)
-    // pipeline.push_back(ProcessStepFactory::createGaussianBlur(mode));
-    // FilterConfig blurConfig;
-    // // blurConfig.setParameter("kernel_size", int(3));
-    // // blurConfig.setParameter("sigma_x", double(1.0));
-    // blurConfig.setParameter("kernel_size", int(11));
-    // blurConfig.setParameter("sigma_x", double(3.0));
-    // configs.push_back(blurConfig);
+    // // // Step 5: GaussianBlur (to reduce noise before contour detection)
+    // // pipeline.push_back(ProcessStepFactory::createGaussianBlur(mode));
+    // // FilterConfig blurConfig;
+    // // // blurConfig.setParameter("kernel_size", int(3));
+    // // // blurConfig.setParameter("sigma_x", double(1.0));
+    // // blurConfig.setParameter("kernel_size", int(11));
+    // // blurConfig.setParameter("sigma_x", double(3.0));
+    // // configs.push_back(blurConfig);
 
-    // Step 6: Edge Detection
-    pipeline.push_back(ProcessStepFactory::createEdgeDetection(mode));
-    FilterConfig edgeConfig;
-    edgeConfig.setParameter("threshold1", double(150.0)); //min
-    edgeConfig.setParameter("threshold2", double(200.0)); //max
-    edgeConfig.setParameter("aperture_size", int(3));
-    configs.push_back(edgeConfig);
+    // // Step 6: Edge Detection
+    // pipeline.push_back(ProcessStepFactory::createEdgeDetection(mode));
+    // FilterConfig edgeConfig;
+    // edgeConfig.setParameter("threshold1", double(150.0)); //min
+    // edgeConfig.setParameter("threshold2", double(200.0)); //max
+    // edgeConfig.setParameter("aperture_size", int(3));
+    // configs.push_back(edgeConfig);
 
-    // Step 7: Contour Area Filtering
-    pipeline.push_back(ProcessStepFactory::createContourAreaFilter(mode));
-    FilterConfig contourConfig;
-    contourConfig.setParameter("min_area", 7);
-    contourConfig.setParameter("max_area", 300000);
-    contourConfig.setParameter("debug", 1.0); // enable debug overlays
-    configs.push_back(contourConfig);
+    // // Step 7: Contour Area Filtering
+    // pipeline.push_back(ProcessStepFactory::createContourAreaFilter(mode));
+    // FilterConfig contourConfig;
+    // contourConfig.setParameter("min_area", 7);
+    // contourConfig.setParameter("max_area", 300000);
+    // contourConfig.setParameter("debug", 1.0); // enable debug overlays
+    // configs.push_back(contourConfig);
 
-    // Step 8: Mass Center Overlay
-    pipeline.push_back(ProcessStepFactory::createMassCenterOverlay(ProcessingMode::CPU_ONLY));
-    FilterConfig massCenterConfig; // no parameters needed
-    configs.push_back(massCenterConfig);
+    // // Step 8: Mass Center Overlay
+    // pipeline.push_back(ProcessStepFactory::createMassCenterOverlay(ProcessingMode::CPU_ONLY));
+    // FilterConfig massCenterConfig; // no parameters needed
+    // configs.push_back(massCenterConfig);
 
-    // Step 9: Project Point to 2D Surface
-    pipeline.push_back(ProcessStepFactory::createProjectPointTo2DSurface(ProcessingMode::CPU_ONLY));
-    FilterConfig projectConfig; // no parameters needed
-    projectConfig.setParameter("camera_matrix", cameraMatrix);
-    projectConfig.setParameter("distortion_coefficients", distCoeffs);
-    projectConfig.setParameter("extrinsics_combined", extrinsicsCombined);
-    configs.push_back(projectConfig);
+    // // Step 9: Project Point to 2D Surface
+    // pipeline.push_back(ProcessStepFactory::createProjectPointTo2DSurface(ProcessingMode::CPU_ONLY));
+    // FilterConfig projectConfig; // no parameters needed
+    // projectConfig.setParameter("camera_matrix", cameraMatrix);
+    // projectConfig.setParameter("distortion_coefficients", distCoeffs);
+    // projectConfig.setParameter("extrinsics_combined", extrinsicsCombined);
+    // configs.push_back(projectConfig);
 
-    //build a config to sum it up
-    PipelineConfigLoader::PipelineConfig pipeConfig;
-    pipeConfig.steps = pipeline;
-    pipeConfig.configs = configs;
-    pipeConfig.mode = mode;
+    // //build a config to sum it up
+    // PipelineConfigLoader::PipelineConfig pipeConfig;
+    // pipeConfig.steps = pipeline;
+    // pipeConfig.configs = configs;
+    // pipeConfig.mode = mode;
 
-    //we save the pipeline configuration to XML for future use
-    PipelineConfigLoader::saveToXML("pipeline_test3_config.xml", pipeConfig);
-    PipelineConfigLoader::saveToJSON("pipeline_test3_config.json", pipeConfig);
+    // //we save the pipeline configuration to XML for future use
+    // PipelineConfigLoader::saveToXML("pipeline_test3_config.xml", pipeConfig);
+    // PipelineConfigLoader::saveToJSON("pipeline_test3_config.json", pipeConfig);
     //Load pipeline from XML
     //Configure processing pipeline
-    //auto pipeConfig = PipelineConfigLoader::loadFromXML("config.xml");
-    //ProcessingMode mode = pipeConfig.mode;
+    auto pipeConfig = PipelineConfigLoader::loadFromJSON("testset/pipe-1769792531203-9269.json");
+    ProcessingMode mode = pipeConfig.mode;
+    
+    // ===== TEST CalibrationInjector =====
+    std::cout << "\n===== Testing CalibrationInjector =====" << std::endl;
+    
+    // Print pipeline steps and identify calibration-related ones
+    std::cout << "\n[BEFORE INJECTION] Pipeline configuration:" << std::endl;
+    for (size_t i = 0; i < pipeConfig.steps.size(); ++i) {
+        std::cout << "  Step " << i << ": " << pipeConfig.steps[i]->getName();
+        FilterType ft = pipeConfig.steps[i]->getFilterType();
+        
+        if (ft == FilterType::LENS_CORRECTION) {
+            std::cout << " [LENS_CORRECTION]" << std::endl;
+            std::cout << "    fx: " << pipeConfig.configs[i].getParameter("fx", -1.0) << std::endl;
+            std::cout << "    fy: " << pipeConfig.configs[i].getParameter("fy", -1.0) << std::endl;
+            std::cout << "    cx: " << pipeConfig.configs[i].getParameter("cx", -1.0) << std::endl;
+            std::cout << "    cy: " << pipeConfig.configs[i].getParameter("cy", -1.0) << std::endl;
+            std::cout << "    k1: " << pipeConfig.configs[i].getParameter("k1", -999.0) << std::endl;
+            std::cout << "    k2: " << pipeConfig.configs[i].getParameter("k2", -999.0) << std::endl;
+            std::cout << "    k3: " << pipeConfig.configs[i].getParameter("k3", -999.0) << std::endl;
+        } else if (ft == FilterType::PROJECT_POINT_TO_2D_SURFACE) {
+            std::cout << " [PROJECT_POINT_TO_2D_SURFACE]" << std::endl;
+            // Check if matrices exist
+            bool hasCameraMat = pipeConfig.configs[i].hasParameter("camera_matrix");
+            bool hasDistCoeffs = pipeConfig.configs[i].hasParameter("distortion_coefficients");
+            bool hasExtrinsics = pipeConfig.configs[i].hasParameter("extrinsics_combined");
+            std::cout << "    camera_matrix: " << (hasCameraMat ? "present" : "MISSING") << std::endl;
+            std::cout << "    distortion_coefficients: " << (hasDistCoeffs ? "present" : "MISSING") << std::endl;
+            std::cout << "    extrinsics_combined: " << (hasExtrinsics ? "present" : "MISSING") << std::endl;
+            if (hasCameraMat) {
+                cv::Mat cm;
+                pipeConfig.configs[i].getParameter("camera_matrix", cm);
+                std::cout << "    camera_matrix size: " << cm.size() << std::endl;
+            }
+        } else {
+            std::cout << std::endl;
+        }
+    }
+    
+    // Option 1: Load from archive (replace with your actual fileUID)
+    std::string testFileUID = "file-rec-cal-1769775932988-9680"; // example: "file-rec-123456789"
+    auto calibData = lbt::CalibrationInjector::loadFromArchive(testFileUID, "testset");
+    
+    // Option 2: Load directly from compact XML file (if you have one)
+    // auto calibData = lbt::CalibrationInjector::loadFromCompactXML("path/to/calibration-compact-rec-123.xml");
+    
+    if (calibData.valid) {
+        std::cout << "\n[test3] Calibration loaded successfully!" << std::endl;
+        
+        // Inject into pipeline
+        int modifiedSteps = lbt::CalibrationInjector::injectIntoPipeline(pipeConfig, calibData);
+        std::cout << "[test3] Injected calibration into " << modifiedSteps << " pipeline steps" << std::endl;
+        
+        // Print AFTER injection
+        std::cout << "\n[AFTER INJECTION] Pipeline configuration:" << std::endl;
+        for (size_t i = 0; i < pipeConfig.steps.size(); ++i) {
+            FilterType ft = pipeConfig.steps[i]->getFilterType();
+            
+            if (ft == FilterType::LENS_CORRECTION) {
+                std::cout << "  Step " << i << ": " << pipeConfig.steps[i]->getName() << " [LENS_CORRECTION]" << std::endl;
+                std::cout << "    fx: " << pipeConfig.configs[i].getParameter("fx", -1.0) << std::endl;
+                std::cout << "    fy: " << pipeConfig.configs[i].getParameter("fy", -1.0) << std::endl;
+                std::cout << "    cx: " << pipeConfig.configs[i].getParameter("cx", -1.0) << std::endl;
+                std::cout << "    cy: " << pipeConfig.configs[i].getParameter("cy", -1.0) << std::endl;
+                std::cout << "    k1: " << pipeConfig.configs[i].getParameter("k1", -999.0) << std::endl;
+                std::cout << "    k2: " << pipeConfig.configs[i].getParameter("k2", -999.0) << std::endl;
+                std::cout << "    k3: " << pipeConfig.configs[i].getParameter("k3", -999.0) << std::endl;
+            } else if (ft == FilterType::PROJECT_POINT_TO_2D_SURFACE) {
+                std::cout << "  Step " << i << ": " << pipeConfig.steps[i]->getName() << " [PROJECT_POINT_TO_2D_SURFACE]" << std::endl;
+                bool hasCameraMat = pipeConfig.configs[i].hasParameter("camera_matrix");
+                bool hasDistCoeffs = pipeConfig.configs[i].hasParameter("distortion_coefficients");
+                bool hasExtrinsics = pipeConfig.configs[i].hasParameter("extrinsics_combined");
+                std::cout << "    camera_matrix: " << (hasCameraMat ? "present" : "MISSING") << std::endl;
+                std::cout << "    distortion_coefficients: " << (hasDistCoeffs ? "present" : "MISSING") << std::endl;
+                std::cout << "    extrinsics_combined: " << (hasExtrinsics ? "present" : "MISSING") << std::endl;
+                if (hasCameraMat) {
+                    cv::Mat cm;
+                    pipeConfig.configs[i].getParameter("camera_matrix", cm);
+                    std::cout << "    camera_matrix size: " << cm.size() << std::endl;
+                }
+            }
+        }
+        
+        // Alternatively, inject into specific configs manually:
+        // if (pipeConfig.steps.size() > 0) {
+        //     lbt::CalibrationInjector::injectLensCorrection(pipeConfig.configs[0], calibData);
+        //     lbt::CalibrationInjector::injectProjection(pipeConfig.configs[8], calibData);
+        // }
+    } else {
+        std::cout << "[test3] Warning: Could not load calibration: " << calibData.errorMessage << std::endl;
+        std::cout << "[test3] Continuing with existing pipeline configuration..." << std::endl;
+    }
+    
+    std::cout << "\n===== CalibrationInjector Test Complete =====\n" << std::endl;
+    
+    
+    // ===== END TEST =====
+    
       // Process the image
     //qDebug() << "Processing pipeline with" << pipeConfig.steps.size() << "steps...";
 
@@ -386,83 +486,83 @@ int main(int argc, char* argv[])
     }
 #endif
     if (debugPipeline) {
-        qDebug() << "[PipelineDebug] Steps configured:" << pipeline.size();
-        for (size_t i = 0; i < pipeline.size(); ++i) {
-            auto name = QString::fromStdString(pipeline[i]->getName());
-            auto pref = pipeline[i]->getPreferredMemoryLocation() == MemoryLocation::GPU ? "GPU" : "CPU";
+        qDebug() << "[PipelineDebug] Steps configured:" << pipeConfig.steps.size();
+        for (size_t i = 0; i < pipeConfig.steps.size(); ++i) {
+            auto name = QString::fromStdString(pipeConfig.steps[i]->getName());
+            auto pref = pipeConfig.steps[i]->getPreferredMemoryLocation() == MemoryLocation::GPU ? "GPU" : "CPU";
             qDebug() << "  [" << i << "]" << name << "pref=" << pref;
         }
     }
-    //start and iterate
-    std::vector<cv::Point2f> mass_center_list;
-    std::vector<cv::Point2d> world_center_list; 
-    while (std::chrono::steady_clock::now() - start_time < std::chrono::minutes(1)) 
-    {
-         auto frame = frameSource->nextFrame();
-         auto now = std::chrono::steady_clock::now();
-         double dt = std::chrono::duration<double>(now - last_time).count(); // seconds
-         last_time = now;
+//     //start and iterate
+//     std::vector<cv::Point2f> mass_center_list;
+//     std::vector<cv::Point2d> world_center_list; 
+//     while (std::chrono::steady_clock::now() - start_time < std::chrono::minutes(1)) 
+//     {
+//          auto frame = frameSource->nextFrame();
+//          auto now = std::chrono::steady_clock::now();
+//          double dt = std::chrono::duration<double>(now - last_time).count(); // seconds
+//          last_time = now;
 
-         // Calculate instantaneous FPS and update moving average
-         double fps = (dt > 0.0) ? (1.0 / dt) : 0.0;
-         avg_fps = (1.0 - alpha) * avg_fps + alpha * fps;
+//          // Calculate instantaneous FPS and update moving average
+//          double fps = (dt > 0.0) ? (1.0 / dt) : 0.0;
+//          avg_fps = (1.0 - alpha) * avg_fps + alpha * fps;
 
-         if (frame) {
-            FrameMemoryObject result;
-            if (debugPipeline && !printedPipelineOnce) {
-                // Walk the pipeline step by step once and log memory locations
-                FrameMemoryObject cur = *frame;
-                for (size_t i = 0; i < pipeline.size(); ++i) {
-                    auto beforeLoc = cur.getMemoryLocation();
-                    cur = pipeline[i]->process(cur, configs[i]);
-                    auto afterLoc = cur.getMemoryLocation();
-                    auto name = QString::fromStdString(pipeline[i]->getName());
-                    qDebug() << "[PipelineDebug] step" << i << name
-                             << "loc:" << (beforeLoc == MemoryLocation::GPU ? "GPU" : "CPU")
-                             << "->" << (afterLoc == MemoryLocation::GPU ? "GPU" : "CPU");
-                }
-                result = cur;
-                printedPipelineOnce = true;
-            } else {
-                result = ProcessingPipeline::processLine(pipeline, *frame, configs);
-            }
-            //we check for mass center metadata produced by MassCenterOverlay
-            if (result.hasMetadata("mass_center_point_pixel")) {
-                cv::Point2f massCenter = result.getMetadata<cv::Point2f>("mass_center_point_pixel");
-                cv::Point2d worldPt = result.getMetadata<cv::Point2d>("mass_center_point_world");
-                if (massCenter.x >= 0 && massCenter.y >= 0) {
-                    std::cout << "Mass Center Pixel: (" << massCenter.x << ", " << massCenter.y << ")\n";
-                    mass_center_list.push_back(massCenter);
-                    std::cout << "Projected World in mm: (" << worldPt.x << ", " << worldPt.y << ")\n";
-                    world_center_list.push_back(worldPt);
-                    // //we draw the mass center on the original image and save it
-                    // cv::Mat outputImage = frame->getCpuMat().clone();
-                    // cv::circle(outputImage, massCenter, 10, cv::Scalar(0, 0, 255), -1);
+//          if (frame) {
+//             FrameMemoryObject result;
+//             if (debugPipeline && !printedPipelineOnce) {
+//                 // Walk the pipeline step by step once and log memory locations
+//                 FrameMemoryObject cur = *frame;
+//                 for (size_t i = 0; i < pipeConfig.steps.size(); ++i) {
+//                     auto beforeLoc = cur.getMemoryLocation();
+//                     cur = pipeConfig.steps[i]->process(cur, pipeConfig.configs[i]);
+//                     auto afterLoc = cur.getMemoryLocation();
+//                     auto name = QString::fromStdString(pipeConfig.steps[i]->getName());
+//                     qDebug() << "[PipelineDebug] step" << i << name
+//                              << "loc:" << (beforeLoc == MemoryLocation::GPU ? "GPU" : "CPU")
+//                              << "->" << (afterLoc == MemoryLocation::GPU ? "GPU" : "CPU");
+//                 }
+//                 result = cur;
+//                 printedPipelineOnce = true;
+//             } else {
+//                 result = ProcessingPipeline::processLine(pipeConfig.steps, *frame, pipeConfig.configs);
+//             }
+//             //we check for mass center metadata produced by MassCenterOverlay
+//             if (result.hasMetadata("mass_center_point_pixel")) {
+//                 cv::Point2f massCenter = result.getMetadata<cv::Point2f>("mass_center_point_pixel");
+//                 cv::Point2d worldPt = result.getMetadata<cv::Point2d>("mass_center_point_world");
+//                 if (massCenter.x >= 0 && massCenter.y >= 0) {
+//                     std::cout << "Mass Center Pixel: (" << massCenter.x << ", " << massCenter.y << ")\n";
+//                     mass_center_list.push_back(massCenter);
+//                     std::cout << "Projected World in mm: (" << worldPt.x << ", " << worldPt.y << ")\n";
+//                     world_center_list.push_back(worldPt);
+//                     // //we draw the mass center on the original image and save it
+//                     // cv::Mat outputImage = frame->getCpuMat().clone();
+//                     // cv::circle(outputImage, massCenter, 10, cv::Scalar(0, 0, 255), -1);
 
-                    // cv::imwrite("data/mass_center_" + std::to_string(img_counter++) + ".jpg", outputImage);
-                } 
-                else {
-                    std::cout << "Mass Center could not be calculated.\n";
-                }
-            }
+//                     // cv::imwrite("data/mass_center_" + std::to_string(img_counter++) + ".jpg", outputImage);
+//                 } 
+//                 else {
+//                     std::cout << "Mass Center could not be calculated.\n";
+//                 }
+//             }
 
-            // Optionally print or log the moving average FPS
-            std::cout << "Moving average FPS: " << avg_fps << std::endl;
-            double target_fps = frequency; // 10.0
-            double delta_fps = avg_fps - target_fps;
+//             // Optionally print or log the moving average FPS
+//             std::cout << "Moving average FPS: " << avg_fps << std::endl;
+//             double target_fps = frequency; // 10.0
+//             double delta_fps = avg_fps - target_fps;
 
-            std::cout << "Moving average FPS: " << avg_fps
-             << " | Target FPS: " << target_fps
-             << " | Delta: " << delta_fps << std::endl;
-         }
-         std::this_thread::sleep_for(interval);
-   }//end while
-   std::cout << "XPixel;YPixel;XRealInMM;YRealInMM\n";
-   for (size_t i = 0; i < mass_center_list.size(); ++i) {
-       const auto& p = mass_center_list[i];
-       const auto& p2 = world_center_list[i];
-       std::cout << p.x << ";" << p.y << ";" << p2.x << ";" << p2.y << "\n";
-   }
+//             std::cout << "Moving average FPS: " << avg_fps
+//              << " | Target FPS: " << target_fps
+//              << " | Delta: " << delta_fps << std::endl;
+//          }
+//          std::this_thread::sleep_for(interval);
+//    }//end while
+//    std::cout << "XPixel;YPixel;XRealInMM;YRealInMM\n";
+//    for (size_t i = 0; i < mass_center_list.size(); ++i) {
+//        const auto& p = mass_center_list[i];
+//        const auto& p2 = world_center_list[i];
+//        std::cout << p.x << ";" << p.y << ";" << p2.x << ";" << p2.y << "\n";
+//    }
 
     return 0;
 }

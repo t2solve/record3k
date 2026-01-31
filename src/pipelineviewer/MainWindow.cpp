@@ -15,6 +15,7 @@
 #include <QStatusBar>
 #include <QRandomGenerator>
 #include <QSlider>
+#include <QApplication>
 #include <chrono>
 #include <opencv2/imgproc.hpp>
 #include <liblbt/processing_pipeline.h>
@@ -23,9 +24,15 @@
 MainWindow::MainWindow(QWidget* parent) 
     : QMainWindow(parent)
     , settings_("record3k", "pipelineviewer")
+    , isPlaying_(false)
+    , playbackSpeed_(1.0)
 {
     loadConfiguration();
     ensureWorkDir();
+    
+    // Create playback timer
+    playbackTimer_ = new QTimer(this);
+    connect(playbackTimer_, &QTimer::timeout, this, &MainWindow::onPlaybackTick);
     
     apiClient_ = std::make_unique<ApiClient>(this);
     apiClient_->setBaseUrl(settings_.value("api/url", "http://127.0.0.1:8080").toString());
@@ -49,17 +56,38 @@ MainWindow::MainWindow(QWidget* parent)
     nextBtn_ = new QPushButton("Next Frame");
     tb->addWidget(nextBtn_);
     
+    // Add toolbar break for frame navigation section
+    addToolBarBreak();
+    auto* navTb = addToolBar("Navigation");
+    
     // Frame navigation slider
-    tb->addSeparator();
     frameLabel_ = new QLabel("Frame: 0/0");
-    tb->addWidget(frameLabel_);
+    navTb->addWidget(frameLabel_);
     frameSlider_ = new QSlider(Qt::Horizontal);
     frameSlider_->setMinimum(0);
     frameSlider_->setMaximum(0);
     frameSlider_->setValue(0);
     frameSlider_->setEnabled(false);
     frameSlider_->setMinimumWidth(200);
-    tb->addWidget(frameSlider_);
+    navTb->addWidget(frameSlider_);
+    
+    // Playback controls
+    navTb->addSeparator();
+    playPauseBtn_ = new QPushButton("▶️ Play");
+    playPauseBtn_->setEnabled(false);
+    navTb->addWidget(playPauseBtn_);
+    
+    speedCombo_ = new QComboBox();
+    speedCombo_->addItem("1x", 1.0);
+    speedCombo_->addItem("2x", 2.0);
+    speedCombo_->addItem("4x", 4.0);
+    speedCombo_->setCurrentIndex(0);
+    navTb->addWidget(speedCombo_);
+    
+    connect(playPauseBtn_, &QPushButton::clicked, this, &MainWindow::onPlayPauseToggled);
+    connect(speedCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int index) {
+        playbackSpeed_ = speedCombo_->itemData(index).toDouble();
+    });
 
     connect(configAct, &QAction::triggered, this, &MainWindow::showConfiguration);
     connect(browseRecordsAct, &QAction::triggered, this, &MainWindow::showRecordsBrowser);
@@ -69,6 +97,9 @@ MainWindow::MainWindow(QWidget* parent)
     connect(forceCpuAct_, &QAction::toggled, [this](bool on){ this->forceCpu_ = on; });
     connect(nextBtn_, &QPushButton::clicked, this, &MainWindow::nextFrame);
     connect(frameSlider_, &QSlider::valueChanged, this, &MainWindow::onFrameSliderChanged);
+    
+    // Add toolbar break for pipeline editing section
+    addToolBarBreak();
     
     // Pipeline Edit Toolbar
     auto* pipeEditTb = addToolBar("Pipeline Edit");
@@ -91,16 +122,44 @@ MainWindow::MainWindow(QWidget* parent)
     stepList_ = new QListWidget;
     connect(stepList_, &QListWidget::currentRowChanged, this, &MainWindow::onStepSelectionChanged);
 
-    // Center: images before/after
+    // Center: three image views (input, before, after)
+    inputLabel_ = new QLabel; inputLabel_->setAlignment(Qt::AlignCenter);
     beforeLabel_ = new QLabel; beforeLabel_->setAlignment(Qt::AlignCenter);
     afterLabel_ = new QLabel; afterLabel_->setAlignment(Qt::AlignCenter);
 
+    auto* inputScroll = new QScrollArea; inputScroll->setWidgetResizable(true); inputScroll->setWidget(inputLabel_);
     auto* beforeScroll = new QScrollArea; beforeScroll->setWidgetResizable(true); beforeScroll->setWidget(beforeLabel_);
     auto* afterScroll = new QScrollArea; afterScroll->setWidgetResizable(true); afterScroll->setWidget(afterLabel_);
+    
+    // Add labels to the scroll areas
+    auto* inputLayout = new QVBoxLayout();
+    auto* inputTitle = new QLabel("<b>Input (Original)</b>");
+    inputTitle->setAlignment(Qt::AlignCenter);
+    auto* inputWidget = new QWidget();
+    inputLayout->addWidget(inputTitle);
+    inputLayout->addWidget(inputScroll);
+    inputWidget->setLayout(inputLayout);
+    
+    auto* beforeLayout = new QVBoxLayout();
+    auto* beforeTitle = new QLabel("<b>Before Filter</b>");
+    beforeTitle->setAlignment(Qt::AlignCenter);
+    auto* beforeWidget = new QWidget();
+    beforeLayout->addWidget(beforeTitle);
+    beforeLayout->addWidget(beforeScroll);
+    beforeWidget->setLayout(beforeLayout);
+    
+    auto* afterLayout = new QVBoxLayout();
+    auto* afterTitle = new QLabel("<b>After Filter</b>");
+    afterTitle->setAlignment(Qt::AlignCenter);
+    auto* afterWidget = new QWidget();
+    afterLayout->addWidget(afterTitle);
+    afterLayout->addWidget(afterScroll);
+    afterWidget->setLayout(afterLayout);
 
     auto* imagesSplit = new QSplitter(Qt::Horizontal);
-    imagesSplit->addWidget(beforeScroll);
-    imagesSplit->addWidget(afterScroll);
+    imagesSplit->addWidget(inputWidget);
+    imagesSplit->addWidget(beforeWidget);
+    imagesSplit->addWidget(afterWidget);
 
     // Right: params editor
     paramsWidget_ = new QWidget;
@@ -140,6 +199,10 @@ void MainWindow::openImageDirectory() {
     QString dir = QFileDialog::getExistingDirectory(this, "Select image directory");
     if (dir.isEmpty()) return;
     source_ = std::make_unique<DiskImageFrameSource>(dir.toStdString(), "*.jpg");
+    
+    // Enable playback controls
+    playPauseBtn_->setEnabled(true);
+    
     nextFrame();
 }
 
@@ -321,6 +384,12 @@ void MainWindow::nextFrame() {
     currentFrame_ = source_->nextFrame();
     if (!currentFrame_) {
         QMessageBox::information(this, "Info", "No more frames.");
+        // Stop playback if running
+        if (isPlaying_) {
+            isPlaying_ = false;
+            playbackTimer_->stop();
+            playPauseBtn_->setText("▶️ Play");
+        }
         return;
     }
     
@@ -335,17 +404,22 @@ void MainWindow::nextFrame() {
         frameSlider_->blockSignals(false);
     }
     
+    // Always show original input in the input label
+    auto inputMat = currentFrame_->getCpuMat();
+    QImage inputImg = matToQImage(inputMat);
+    QSize inputSize = inputLabel_->size();
+    if (inputSize.width() <= 0 || inputSize.height() <= 0) inputSize = QSize(400, 400);
+    inputLabel_->setPixmap(QPixmap::fromImage(inputImg).scaled(inputSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    
     if (stepList_->currentRow() >= 0) showBeforeAfter(stepList_->currentRow());
     else {
-        // Show original in both panes initially (scaled)
-        auto mat = currentFrame_->getCpuMat();
-        QImage img = matToQImage(mat);
+        // Show original in both before/after panes initially (scaled)
         QSize beforeSize = beforeLabel_->size();
         QSize afterSize = afterLabel_->size();
-        if (beforeSize.width() <= 0 || beforeSize.height() <= 0) beforeSize = QSize(800,600);
-        if (afterSize.width() <= 0 || afterSize.height() <= 0) afterSize = QSize(800,600);
-        beforeLabel_->setPixmap(QPixmap::fromImage(img).scaled(beforeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-        afterLabel_->setPixmap(QPixmap::fromImage(img).scaled(afterSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        if (beforeSize.width() <= 0 || beforeSize.height() <= 0) beforeSize = QSize(400,400);
+        if (afterSize.width() <= 0 || afterSize.height() <= 0) afterSize = QSize(400,400);
+        beforeLabel_->setPixmap(QPixmap::fromImage(inputImg).scaled(beforeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        afterLabel_->setPixmap(QPixmap::fromImage(inputImg).scaled(afterSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     }
 }
 
@@ -674,11 +748,23 @@ void MainWindow::onDownloadRecord() {
                 return;
             }
             
+            // Show extraction progress
+            auto* extractProgress = new QProgressDialog("Extracting archive...", nullptr, 0, 0, this);
+            extractProgress->setWindowModality(Qt::WindowModal);
+            extractProgress->setCancelButton(nullptr); // No cancel during extraction
+            extractProgress->setMinimumDuration(0);
+            extractProgress->setValue(0);
+            extractProgress->show();
+            QApplication::processEvents(); // Force UI update
+            
             // Extract tar.gz
             statusBar()->showMessage("Extracting archive...");
             QString cmd = QString("cd \"%1\" && tar -xzf \"%2\"")
                 .arg(destDir, QFileInfo(destFile).fileName());
             int result = system(cmd.toStdString().c_str());
+            
+            extractProgress->close();
+            extractProgress->deleteLater();
             
             if (result != 0) {
                 QMessageBox::critical(this, "Error", "Failed to extract archive.");
@@ -716,9 +802,13 @@ void MainWindow::loadRecordData(const QString& recordUID, const QString& extract
         frameSlider_->setMaximum(frameCount - 1);
         frameSlider_->setValue(0);
         frameLabel_->setText(QString("Frame: 0/%1").arg(frameCount - 1));
+        
+        // Enable playback controls
+        playPauseBtn_->setEnabled(true);
     } else {
         frameSlider_->setEnabled(false);
         frameLabel_->setText("Frame: 0/0");
+        playPauseBtn_->setEnabled(false);
     }
     
     nextFrame();
@@ -869,4 +959,106 @@ void MainWindow::onAddStep() {
             }
         }
     }
+}
+void MainWindow::onPlayPauseToggled() {
+    if (!source_ || !source_->isReady()) {
+        return;
+    }
+    
+    isPlaying_ = !isPlaying_;
+    
+    if (isPlaying_) {
+        playPauseBtn_->setText("⏸️ Pause");
+        // Start playback timer - will calculate interval based on timestamps
+        onPlaybackTick(); // Show first frame immediately
+    } else {
+        playPauseBtn_->setText("▶️ Play");
+        playbackTimer_->stop();
+    }
+}
+
+void MainWindow::onPlaybackTick() {
+    if (!isPlaying_ || !source_ || !source_->isReady()) {
+        return;
+    }
+    
+    // Get current frame index
+    auto* diskSource = dynamic_cast<DiskImageFrameSource*>(source_.get());
+    if (!diskSource) {
+        return;
+    }
+    
+    size_t currentIndex = diskSource->getCurrentIndex();
+    size_t totalFrames = diskSource->getFrameCount();
+    
+    // Check if we're at the end
+    if (currentIndex >= totalFrames - 1) {
+        isPlaying_ = false;
+        playbackTimer_->stop();
+        playPauseBtn_->setText("▶️ Play");
+        return;
+    }
+    
+    // Extract timestamp from current filename
+    auto getCurrentTimestamp = [diskSource]() -> uint64_t {
+        // Get current frame's file path
+        const auto& files = diskSource->getImageFiles();
+        size_t idx = diskSource->getCurrentIndex();
+        if (idx >= files.size()) return 0;
+        
+        std::string filename = files[idx].filename().string();
+        // Extract timestamp from filename: frame_XXXXXX_<timestamp>.jpg
+        size_t lastUnderscore = filename.rfind('_');
+        size_t dotPos = filename.rfind('.');
+        if (lastUnderscore != std::string::npos && dotPos != std::string::npos) {
+            std::string tsStr = filename.substr(lastUnderscore + 1, dotPos - lastUnderscore - 1);
+            try {
+                return std::stoull(tsStr);
+            } catch (...) {
+                return 0;
+            }
+        }
+        return 0;
+    };
+    
+    // Get next frame timestamp
+    auto getNextTimestamp = [diskSource]() -> uint64_t {
+        const auto& files = diskSource->getImageFiles();
+        size_t idx = diskSource->getCurrentIndex() + 1;
+        if (idx >= files.size()) return 0;
+        
+        std::string filename = files[idx].filename().string();
+        size_t lastUnderscore = filename.rfind('_');
+        size_t dotPos = filename.rfind('.');
+        if (lastUnderscore != std::string::npos && dotPos != std::string::npos) {
+            std::string tsStr = filename.substr(lastUnderscore + 1, dotPos - lastUnderscore - 1);
+            try {
+                return std::stoull(tsStr);
+            } catch (...) {
+                return 0;
+            }
+        }
+        return 0;
+    };
+    
+    uint64_t currentTs = getCurrentTimestamp();
+    uint64_t nextTs = getNextTimestamp();
+    
+    // Calculate delay to next frame (in nanoseconds, convert to milliseconds)
+    int delayMs = 33; // Default 30fps if timestamps unavailable
+    if (currentTs > 0 && nextTs > currentTs) {
+        uint64_t deltaMs = (nextTs - currentTs) / 1000000; // ns to ms
+        delayMs = static_cast<int>(deltaMs / playbackSpeed_);
+        
+        // Clamp to reasonable range
+        if (delayMs < 1) delayMs = 1;
+        if (delayMs > 5000) delayMs = 33; // Fallback if timestamps are wrong
+    }
+    
+    // Show next frame
+    nextFrame();
+    
+    // Schedule next tick
+    playbackTimer_->setSingleShot(true);
+    playbackTimer_->start(delayMs);
 }

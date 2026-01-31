@@ -12,6 +12,8 @@
 #include <QScrollArea>
 #include <QProgressDialog>
 #include <QSettings>
+#include <QTimer>
+#include <QComboBox>
 #include <memory>
 #include <liblbt/pipeline_config_loader.h>
 #include <liblbt/disk_image_frame_source.h>
@@ -39,10 +41,13 @@ private slots:
     void onRemoveStep();
     void onAddStep();
     void onFrameSliderChanged(int value);
+    void onPlayPauseToggled();
+    void onPlaybackTick();
 
 private:
     // UI
     QListWidget* stepList_ {nullptr};
+    QLabel* inputLabel_ {nullptr};
     QLabel* beforeLabel_ {nullptr};
     QLabel* afterLabel_ {nullptr};
     QWidget* paramsWidget_ {nullptr};
@@ -54,6 +59,11 @@ private:
     bool forceCpu_ {false};
     QSlider* frameSlider_ {nullptr};
     QLabel* frameLabel_ {nullptr};
+    QPushButton* playPauseBtn_ {nullptr};
+    QComboBox* speedCombo_ {nullptr};
+    QTimer* playbackTimer_ {nullptr};
+    bool isPlaying_ {false};
+    double playbackSpeed_ {1.0};
 
     // Records browser UI
     QDialog* recordsDialog_ {nullptr};

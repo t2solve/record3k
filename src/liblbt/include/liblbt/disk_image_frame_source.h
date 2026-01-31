@@ -18,9 +18,11 @@ public:
     void seekToFrame(size_t index);
     size_t getCurrentIndex() const { return currentIndex_; }
     size_t getFrameCount() const { return images_.size(); }
+    const std::vector<std::filesystem::path>& getImageFiles() const { return imagePaths_; }
 
 private:
     // Preloaded images (up to a cap) for stable profiling without disk I/O jitter
     std::vector<cv::Mat> images_;
+    std::vector<std::filesystem::path> imagePaths_; // Store file paths for timestamp extraction
     size_t currentIndex_ {0};
 };
