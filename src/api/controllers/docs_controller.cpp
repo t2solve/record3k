@@ -117,8 +117,7 @@ Json::Value buildSpec() {
 
     // Do endpoints
     addPost("/do/camera/calibrate/{camUID}","Trigger calibration","CalibrationInfo",202);
-    addPost("/do/camera/pipeline_test/{camUID}","Pipeline test record","RecordInfo",202);
-    addPost("/do/camera/record/start/{camUID}","Start recording","RecordInfo",201);
+    addPost("/do/camera/record/start/{camUID}","Start recording (supports pipeLineTest:bool for debug mode)","RecordInfo",201);
     addPost("/do/camera/record/{recordUID}/stop","Stop recording","RecordInfo",200);
     addPost("/do/camera/test/{camUID}","Test camera connectivity","",200);
 

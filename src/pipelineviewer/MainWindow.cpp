@@ -314,17 +314,11 @@ void MainWindow::uploadPipeline() {
     char buffer[100];
     std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm);
     
-    // Set pipeline metadata
-    pipe_.description = description.toStdString();
-    pipe_.datetimeCreated = std::string(buffer);
-    pipe_.status = "active";
-    pipe_.pipelineUID = ""; // will be set during upload
-    
     // Save to temp file
     QString tempFile = QDir::temp().filePath(QString("pipe-upload-%1.json").arg(QDateTime::currentMSecsSinceEpoch()));
     
     try {
-        // Validate before upload
+        // Validate before upload (metadata not required for validation)
         std::string validationError;
         if (!PipelineConfigLoader::validate(pipe_, validationError)) {
             QMessageBox::critical(this, "Validation Error", 
@@ -337,17 +331,38 @@ void MainWindow::uploadPipeline() {
         int random = QRandomGenerator::global()->bounded(10000);
         QString pipelineUID = QString("pipe-%1-%2").arg(timestamp).arg(random);
         
-        //rests 
+        // Set all metadata ONCE before saving
         pipe_.pipelineUID = pipelineUID.toStdString();
-      
-        // Save pipeline config first
-        PipelineConfigLoader::saveToJSON(tempFile.toStdString(), pipe_);
+        pipe_.description = description.toStdString();
+        pipe_.datetimeCreated = std::string(buffer);
+        pipe_.status = "active";
         
-        // Read back and add metadata wrapper (pipelineUID, status, dateBuild, description)
-        QFile file(tempFile);
-        if (!file.open(QIODevice::ReadOnly)) {
-            QMessageBox::critical(this, "Error", "Failed to read saved pipeline file");
+        qDebug() << "[MainWindow::uploadPipeline] Saving pipeline with:";
+        qDebug() << "  pipelineUID:" << QString::fromStdString(pipe_.pipelineUID);
+        qDebug() << "  description:" << QString::fromStdString(pipe_.description);
+        qDebug() << "  datetimeCreated:" << QString::fromStdString(pipe_.datetimeCreated);
+        qDebug() << "  status:" << QString::fromStdString(pipe_.status);
+        qDebug() << "  steps:" << pipe_.steps.size();
+      
+        // Save pipeline config
+        if (!PipelineConfigLoader::saveToJSON(tempFile.toStdString(), pipe_)) {
+            QMessageBox::critical(this, "Error", "Failed to save pipeline to temporary file");
             return;
+        }
+        
+        // Debug: Read back to verify FULL content
+        QFile file(tempFile);
+        if (file.open(QIODevice::ReadOnly)) {
+            QByteArray content = file.readAll();
+            qDebug() << "[MainWindow::uploadPipeline] Saved file size:" << content.size() << "bytes";
+            qDebug() << "[MainWindow::uploadPipeline] First 1000 chars:" << content.left(1000);
+            qDebug() << "[MainWindow::uploadPipeline] Last 200 chars:" << content.right(200);
+            file.close();
+            
+            // Keep a copy for debugging
+            QString debugCopy = tempFile + ".debug";
+            QFile::copy(tempFile, debugCopy);
+            qDebug() << "[MainWindow::uploadPipeline] Debug copy saved to:" << debugCopy;
         }
 
         auto* progress = new QProgressDialog("Uploading pipeline to API...", "Cancel", 0, 0, this);

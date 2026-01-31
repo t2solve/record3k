@@ -100,9 +100,9 @@ bool RecordManager::start() {
         return false;
     }
     
-    // Always add FrameWriter for main frames directory if not present
-    // This ensures frames are written to recordDir/frames/ for normal output
-    {
+    // Add FrameWriter only in DEBUG mode to save raw frames
+    // In PRODUCTION mode, skip frame writing to save disk space
+    if (m_config.logMode == ResultLogger::LogMode::DEBUG) {
         std::string framesPath = m_framesDir.string();
         bool added = ProcessingPipeline::addFrameWriterIfNotExists(
             m_config.pipeline.steps,
@@ -112,7 +112,7 @@ bool RecordManager::start() {
             "jpg"
         );
         if (added) {
-            std::cout << "[RecordManager] Added FrameWriter to pipeline for frames output: " << framesPath << std::endl;
+            std::cout << "[RecordManager] Added FrameWriter to pipeline for DEBUG mode (frames: " << framesPath << ")" << std::endl;
         } else {
             auto successFlag = false;
             // Reset path if FrameWriter already exists - find its index in the steps vector
@@ -137,6 +137,8 @@ bool RecordManager::start() {
                 std::cout << "[RecordManager] FrameWriter already exists in pipeline" << std::endl;
             }
         }
+    } else {
+        std::cout << "[RecordManager] PRODUCTION mode - skipping FrameWriter to save disk space" << std::endl;
     }
     
     // Reset state

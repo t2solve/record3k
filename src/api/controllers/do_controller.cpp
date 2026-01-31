@@ -270,15 +270,6 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
     LOG_INFO << "[DoController::cameraCalibrate] Request handler returning, calibration running in background";
 }
 
-void DoController::cameraPipelineTest(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> && cb, const std::string &camUID) {
-    auto json = req->getJsonObject();
-    std::string pipelineUID = (json && json->isMember("pipelineUID")) ? (*json)["pipelineUID"].asString() : "pipe-default";
-    RecordInfo r{makeUID("rec"), "cal-latest", true, pipelineUID, "study-test", "queued", 0.0, "2025-11-07T12:00:00Z", "", "file-rec-placeholder"};
-    auto resp = HttpResponse::newHttpJsonResponse(r.toJson());
-    resp->setStatusCode(k202Accepted);
-    cb(resp);
-}
-
 void DoController::recordStart(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> && cb, const std::string &camUID) {
     auto json = req->getJsonObject();
     double durationMs = (json && json->isMember("durationInMS")) ? (*json)["durationInMS"].asDouble() : 1000.0;
@@ -286,6 +277,7 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
     std::string pipelineUID = (json && json->isMember("pipelineUID")) ? (*json)["pipelineUID"].asString() : "pipe-default";
     std::string studyInfoUID = (json && json->isMember("studyInfoUID")) ? (*json)["studyInfoUID"].asString() : "study-unknown";
     std::string description = (json && json->isMember("description")) ? (*json)["description"].asString() : "record session";
+    bool pipeLineTest = (json && json->isMember("pipeLineTest")) ? (*json)["pipeLineTest"].asBool() : false;
 
     //TODO check if all parameters are valid
     //test 1 validate duration
@@ -331,7 +323,8 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
         calibrationUID, 
         pipelineUID, 
         studyInfoUID, 
-        staticPipeLineFile]() mutable {
+        staticPipeLineFile,
+        pipeLineTest]() mutable {
         std::string threadId = getThreadIdStr();
         LOG_INFO << "[DoController::recordStart][TID:" << threadId << "] Background thread started for camera: " << camUID;
         
@@ -473,7 +466,9 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
             recordConfig.recordUID = recordUID;
             recordConfig.cameraUID = camUID;  // Set camera UID for locking
             recordConfig.outputDir = lbt::FileManager::instance().getTempOutputPath().string();
-            recordConfig.logMode = lbt::ResultLogger::LogMode::DEBUG;  // Enable debug logging
+            // Set log mode based on pipeLineTest flag
+            recordConfig.logMode = pipeLineTest ? lbt::ResultLogger::LogMode::DEBUG : lbt::ResultLogger::LogMode::PRODUCTION;
+            LOG_INFO << "[DoController::recordStart][TID:" << threadId << "] Pipeline test mode: " << (pipeLineTest ? "DEBUG" : "PRODUCTION");
             
             // Set optional calibration and study files for copying
             if (calibrationUID != "cal-latest") {
@@ -569,15 +564,9 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
                 LOG_ERROR << "[DoController::recordStart][TID:" << threadId << "] Failed to update record info";
             }
             
-            // Copy study info to record using InfoDataManager (creates study-{recordUID}.json in data/records/)
-            if (studyInfoUID != "study-unknown") {
-                std::filesystem::path recordDir = "data/records";
-                if (infoDataManager().copyStudyToRecord(studyInfoUID, recordDir, recordUID)) {
-                    LOG_INFO << "[DoController::recordStart][TID:" << threadId << "] Copied study info to record via InfoDataManager";
-                } else {
-                    LOG_WARN << "[DoController::recordStart][TID:" << threadId << "] Failed to copy study info to record";
-                }
-            }
+            // NOTE: Study file copying is handled by RecordManager (lines 489-495 set recordConfig.studyFile)
+            // RecordManager copies the file during finalize() before packing the archive.
+            // No need to copy it again here - would be duplication.
 
             // Auto-pack the recording and create FileInfo entry
             lbt::FileManager::instance().checkAndPackCompletedRecordings();

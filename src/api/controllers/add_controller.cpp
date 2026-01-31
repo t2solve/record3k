@@ -71,6 +71,12 @@ void AddController::addPipeline(const HttpRequestPtr& req, std::function<void (c
         }
         uploadFile.close();
         
+        // Debug: Log received JSON structure
+        LOG_INFO << "[AddController::addPipeline] Uploaded JSON keys: ";
+        for (const auto& key : uploadedJson.getMemberNames()) {
+            LOG_INFO << "  - " << key << ": " << uploadedJson[key].toStyledString().substr(0, 100);
+        }
+        
         // Extract pipelineUID from uploaded file (GUI should have added it)
         if (!uploadedJson.isMember("pipelineUID") || uploadedJson["pipelineUID"].asString().empty()) {
             LOG_ERROR << "[AddController::addPipeline] Uploaded file missing pipelineUID";
@@ -84,6 +90,10 @@ void AddController::addPipeline(const HttpRequestPtr& req, std::function<void (c
         PipelineConfigLoader::validateOrThrow(config);
         LOG_INFO << "[AddController::addPipeline] Pipeline validated successfully with " << config.steps.size() << " steps";
         
+        // Debug: Check temp file size before copy
+        auto tempSize = std::filesystem::file_size(tempPath);
+        LOG_INFO << "[AddController::addPipeline] Temp file size: " << tempSize << " bytes";
+        
         // Save to data/pipelines/ directory
         std::filesystem::path pipelinesDir = "data/pipelines";
         std::filesystem::create_directories(pipelinesDir);
@@ -93,26 +103,29 @@ void AddController::addPipeline(const HttpRequestPtr& req, std::function<void (c
         std::filesystem::copy_file(tempPath, finalPath, std::filesystem::copy_options::overwrite_existing);
         LOG_INFO << "[AddController::addPipeline] Saved pipeline to: " << finalPath;
         
+        // Debug: Verify copy
+        auto finalSize = std::filesystem::file_size(finalPath);
+        LOG_INFO << "[AddController::addPipeline] Final file size: " << finalSize << " bytes";
+        if (tempSize != finalSize) {
+            LOG_ERROR << "[AddController::addPipeline] FILE SIZE MISMATCH! Temp: " << tempSize << " Final: " << finalSize;
+        }
+        
         // Extract metadata from uploaded file for response
         std::string description = uploadedJson.isMember("description") ? uploadedJson["description"].asString() : "Uploaded pipeline";
         std::string status = uploadedJson.isMember("status") ? uploadedJson["status"].asString() : "active";
         std::string dateBuild = uploadedJson.isMember("dateBuild") ? uploadedJson["dateBuild"].asString() : getCurrentTimeISO8601();
         
-        // Store metadata in InfoDataManager so it appears in /info/pipelines/list
-        Json::Value pipelineMetadata;
-        pipelineMetadata["pipelineUID"] = pipelineUID;
-        pipelineMetadata["description"] = description;
-        pipelineMetadata["status"] = status;
-        pipelineMetadata["dateBuild"] = dateBuild;
-        
-        if (infoDataManager().put("pipelines", pipelineUID, pipelineMetadata)) {
-            LOG_INFO << "[AddController::addPipeline] Registered pipeline in InfoDataManager: " << pipelineUID;
-        } else {
-            LOG_WARN << "[AddController::addPipeline] Failed to register pipeline in InfoDataManager";
-        }
+        // NOTE: Do NOT call infoDataManager().put() here as it would overwrite the full pipeline file
+        // with just metadata! The file already exists with complete content.
+        // InfoDataManager will pick it up on next scan/refresh.
+        LOG_INFO << "[AddController::addPipeline] Pipeline saved, InfoDataManager will detect it on next scan";
         
         // Create response
-        Json::Value response = pipelineMetadata;
+        Json::Value response;
+        response["pipelineUID"] = pipelineUID;
+        response["description"] = description;
+        response["status"] = status;
+        response["dateBuild"] = dateBuild;
         response["filePath"] = finalPath;
         response["stepCount"] = (int)config.steps.size();
         

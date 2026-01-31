@@ -169,11 +169,14 @@ class BugTrackerApp {
             }
 
             // Populate dropdown (latest first if they have timestamps)
-            pipelineSelect.innerHTML = pipelines.map((pipe, idx) => 
-                `<option value="${this.escapeHtml(pipe.pipelineUID)}" ${idx === 0 ? 'selected' : ''}>
-                    ${this.escapeHtml(pipe.pipelineUID)}
-                </option>`
-            ).join('');
+            pipelineSelect.innerHTML = pipelines.map((pipe, idx) => {
+                const displayText = pipe.description 
+                    ? `${pipe.pipelineUID} - ${pipe.description}`
+                    : pipe.pipelineUID;
+                return `<option value="${this.escapeHtml(pipe.pipelineUID)}" ${idx === 0 ? 'selected' : ''}>
+                    ${this.escapeHtml(displayText)}
+                </option>`;
+            }).join('');
             
             // Auto-select first pipeline
             if (pipelines.length > 0) {
@@ -240,11 +243,35 @@ class BugTrackerApp {
             const seconds = parseInt(document.getElementById('duration-seconds').value) || 0;
             const durationInSeconds = (hours * 3600) + (minutes * 60) + seconds;
             
+            const pipeLineTest = document.getElementById('pipeline-test-mode').checked;
             const recordDesc = document.getElementById('record-desc').value.trim();
 
             // Validation
             if (!camUID || !calibrationUID || !pipelineUID || !scientificName || !weightInMg || durationInSeconds < 1) {
                 throw new Error('Please fill in all required fields and ensure duration is at least 1 second');
+            }
+
+            // Warning when debug mode (pipeline test mode) is enabled
+            if (pipeLineTest) {
+                const estimatedGB = (durationInSeconds / 3600).toFixed(2);
+                const estimatedMB = (durationInSeconds / 3600 * 1024).toFixed(0);
+                const storageWarning = durationInSeconds > 60 
+                    ? `Estimated storage required: ~${estimatedGB} GB (approximately 1 GB per hour)`
+                    : `Estimated storage required: ~${estimatedMB} MB`;
+                
+                const confirmed = confirm(
+                    `⚠️ WARNING: Pipeline Test Mode (Debug) is enabled!\n\n` +
+                    `This mode saves all raw frames to disk for debugging.\n` +
+                    `${storageWarning}\n\n` +
+                    `Duration: ${hours}h ${minutes}m ${seconds}s\n\n` +
+                    `Do you want to continue with debug mode enabled?`
+                );
+                
+                if (!confirmed) {
+                    statusEl.style.display = 'none';
+                    startBtn.disabled = false;
+                    return;
+                }
             }
 
             // Step 1: Create study meta info to get auto-generated studyInfoUID
@@ -281,7 +308,8 @@ class BugTrackerApp {
                 calibrationUID: calibrationUID,
                 pipelineUID: pipelineUID,
                 studyInfoUID: studyInfoUID,
-                description: recordDesc
+                description: recordDesc,
+                pipeLineTest: pipeLineTest
             };
             console.log('Sending to /do/record/start:', recordPayload);
             
