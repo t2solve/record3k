@@ -285,7 +285,9 @@ void RecordManager::recordingLoop() {
                     m_config.pipeline.configs
                 );
 
-                uint64_t frameTimeTimeStamp = result.timestampNs();
+                // Pipeline doesn't preserve timestamp, so copy from original frame to result
+                uint64_t originalFrameTimestamp = frame->timestampNs();
+                result.setTimestampNs(originalFrameTimestamp);
                 
                 // Use ResultLogger to log frame and metadata
                 if (m_resultLogger) {
@@ -299,7 +301,8 @@ void RecordManager::recordingLoop() {
                     if (massCenter.x >= 0 && massCenter.y >= 0) {
                         mass_center_list.push_back(massCenter);
                         world_center_list.push_back(worldPt);
-                        frame_timestamps_list.push_back(frameTimeTimeStamp);
+                        // Use result timestamp (now fixed) for CSV
+                        frame_timestamps_list.push_back(result.timestampNs());
                     }
                 }
                 frameCounter++;
@@ -339,7 +342,26 @@ void RecordManager::recordingLoop() {
                 std::cout << "[RecordManager] " << progressMsg.str() << std::endl;
                 logToFile(progressMsg.str());
             }
-            
+
+            //do write a trajectory file
+            {
+                std::ofstream trajFile((m_recordDir / "mass_center_trajectory.csv").string());
+                trajFile << "timestamp_ns;world_x_mm;world_y_mm;"
+                         << "mass_center_x_px;mass_center_y_px"
+                         << "\n";
+                for (size_t i = 0; i < mass_center_list.size(); ++i) {
+                    const auto& p = mass_center_list[i];
+                    const auto& p2 = world_center_list[i];
+                    trajFile << frame_timestamps_list[i] << ";"
+                             << std::fixed << std::setprecision(2)
+                             << p2.x << ";" << p2.y << ";"
+                             << std::setprecision(1)
+                             << p.x << ";" << p.y
+                             << "\n";
+                }
+                trajFile.close();   
+            }
+      
             // Sleep to maintain target FPS
             auto processingTime = std::chrono::steady_clock::now() - now;
             auto sleepTime = interval - std::chrono::duration_cast<std::chrono::milliseconds>(processingTime);

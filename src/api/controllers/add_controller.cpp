@@ -160,7 +160,20 @@ void AddController::addStudyMetaInfo(const HttpRequestPtr& req, std::function<vo
         info.individualScientificName = "Unknown species";
         info.weightInMg = 0.0;
     }
-    auto resp = HttpResponse::newHttpJsonResponse(info.toJson());
-    resp->setStatusCode(k201Created);
-    cb(resp);
+    
+    // Store study in InfoDataManager
+    Json::Value studyJson = info.toJson();
+    if (infoDataManager().put("studies", info.studyInfoUID, studyJson)) {
+        LOG_INFO << "[AddController::addStudyMetaInfo] Stored study: " << info.studyInfoUID;
+        auto resp = HttpResponse::newHttpJsonResponse(studyJson);
+        resp->setStatusCode(k201Created);
+        cb(resp);
+    } else {
+        LOG_ERROR << "[AddController::addStudyMetaInfo] Failed to store study: " << info.studyInfoUID;
+        Json::Value err;
+        err["error"] = "Failed to store study";
+        auto resp = HttpResponse::newHttpJsonResponse(err);
+        resp->setStatusCode(k500InternalServerError);
+        cb(resp);
+    }
 }

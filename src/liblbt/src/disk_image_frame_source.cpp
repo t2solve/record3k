@@ -85,11 +85,61 @@ std::unique_ptr<FrameMemoryObject> DiskImageFrameSource::nextFrame()
     if (currentIndex_ >= images_.size())
         return nullptr;
     // Construct a FrameMemoryObject that references the preloaded cv::Mat (no copy)
-    const cv::Mat& img = images_[currentIndex_++];
+    const cv::Mat& img = images_[currentIndex_];
     auto retValue = std::make_unique<FrameMemoryObject>(img);
     
-    retValue->touchTimestampNow(); // set current timestamp
-
+    // Try to extract timestamp from filename (e.g., "frame_000000_190007170444255.jpg")
+    if (currentIndex_ < imagePaths_.size()) {
+        const std::string filename = imagePaths_[currentIndex_].filename().string();
+        
+        // DEBUG: Log first few filenames for debugging
+        if (currentIndex_ < 5) {
+            std::cout << "[DiskImageFrameSource] Frame " << currentIndex_ 
+                      << " filename: " << filename << std::endl;
+        }
+        
+        // Find the last underscore before the extension
+        size_t lastUnderscore = filename.rfind('_');
+        size_t dotPos = filename.rfind('.');
+        
+        if (lastUnderscore != std::string::npos && dotPos != std::string::npos && 
+            lastUnderscore < dotPos && (dotPos - lastUnderscore) > 1) {
+            // Extract timestamp string between last underscore and extension
+            std::string timestampStr = filename.substr(lastUnderscore + 1, dotPos - lastUnderscore - 1);
+            
+            // Try to parse as uint64_t (nanoseconds)
+            try {
+                uint64_t timestamp = std::stoull(timestampStr);
+                retValue->setTimestampNs(timestamp);
+                
+                // DEBUG: Log first few parsed timestamps
+                if (currentIndex_ < 5) {
+                    std::cout << "[DiskImageFrameSource] Parsed timestamp: " << timestamp 
+                              << " from string: '" << timestampStr << "'" << std::endl;
+                }
+            } catch (const std::exception& e) {
+                // Parsing failed, use current time as fallback
+                if (currentIndex_ < 5) {
+                    std::cout << "[DiskImageFrameSource] Failed to parse timestamp from: '" 
+                              << timestampStr << "', error: " << e.what() << std::endl;
+                }
+                retValue->touchTimestampNow();
+            }
+        } else {
+            // Filename doesn't match expected pattern, use current time
+            if (currentIndex_ < 5) {
+                std::cout << "[DiskImageFrameSource] Filename pattern mismatch "
+                          << "(lastUnderscore=" << lastUnderscore << ", dotPos=" << dotPos << ")" << std::endl;
+            }
+            retValue->touchTimestampNow();
+        }
+    } else {
+        // No path info available, use current time
+        std::cout << "[DiskImageFrameSource] WARNING: No path info for index " << currentIndex_ << std::endl;
+        retValue->touchTimestampNow();
+    }
+    
+    currentIndex_++;
     return retValue;
 }
 

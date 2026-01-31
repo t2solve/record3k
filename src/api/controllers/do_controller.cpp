@@ -485,12 +485,19 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
             }
             
             if (studyInfoUID != "study-unknown") {
-                std::string studyFilePath = "data/studies/" + studyInfoUID + ".json";
-                if (std::filesystem::exists(studyFilePath)) {
-                    recordConfig.studyFile = studyFilePath;
-                    LOG_INFO << "[DoController::recordStart][TID:" << threadId << "] Will copy study: " << studyFilePath;
+                // Verify study exists in InfoDataManager
+                auto studyInfo = infoDataManager().get("studies", studyInfoUID);
+                if (studyInfo) {
+                    // Construct file path based on InfoDataManager structure
+                    std::string studyFilePath = "data/studies/" + studyInfoUID + ".json";
+                    if (std::filesystem::exists(studyFilePath)) {
+                        recordConfig.studyFile = studyFilePath;
+                        LOG_INFO << "[DoController::recordStart][TID:" << threadId << "] Will copy study: " << studyFilePath;
+                    } else {
+                        LOG_WARN << "[DoController::recordStart][TID:" << threadId << "] Study file not found on disk: " << studyFilePath;
+                    }
                 } else {
-                    LOG_WARN << "[DoController::recordStart][TID:" << threadId << "] Study file not found: " << studyFilePath;
+                    LOG_WARN << "[DoController::recordStart][TID:" << threadId << "] Study not found in InfoDataManager: " << studyInfoUID;
                 }
             }
             
