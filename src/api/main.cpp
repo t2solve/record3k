@@ -4,6 +4,7 @@
 #include <drogon/drogon.h>
 #include <trantor/utils/Logger.h>
 #include <api/runtime/app_config.h>
+#include <api/runtime/info_data_manager.h>
 #include <liblbt/file_manager.h>
 #endif
 
@@ -160,6 +161,19 @@ int main(int argc, char* argv[])
         tempOutputPath
     );
     LOG_INFO << "FileManager initialized";
+    
+    // Initialize InfoDataManager (this also starts the stores)
+    infoDataManager().start();
+    LOG_INFO << "InfoDataManager initialized";
+    
+    // Setup FileManager callback to use InfoDataManager
+    lbt::FileManager::instance().setFileInfoCreator(
+        [](const std::string& fileUID, const std::filesystem::path& archivePath, 
+           const std::string& recordUID, const Json::Value& metadata) {
+            return infoDataManager().createFileInfo(fileUID, archivePath, recordUID, metadata);
+        }
+    );
+    LOG_INFO << "FileManager callback configured";
     
     // Initialize VimbaX system in background thread to avoid blocking server startup
     #ifdef VIMBAX_ENABLED

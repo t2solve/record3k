@@ -1,6 +1,6 @@
 include(../../obj/common.pri)
 
-QT += widgets
+QT += widgets network
 
 TEMPLATE = app
 TARGET = pipelineviewer
@@ -12,7 +12,11 @@ LIBS += -L$$OUT_PWD/../../lib -L$$PWD/../../lib -llbt -Wl,-rpath,\'\$$ORIGIN/../
 
 SOURCES += \
     main.cpp \
-    MainWindow.cpp
+    MainWindow.cpp \
+    ApiClient.cpp \
+    ConfigDialog.cpp
 
 HEADERS += \
-    MainWindow.h
+    MainWindow.h \
+    ApiClient.h \
+    ConfigDialog.h

@@ -13,6 +13,7 @@
 #include <liblbt/pipeline_config_loader.h>
 #include <liblbt/process_step.h>
 #include <liblbt/filter_config.h>
+#include <liblbt/result_logger.h>
 
 namespace lbt {
 
@@ -46,6 +47,7 @@ public:
         std::string recordUID;                           // Unique identifier for this record
         std::string cameraUID;                           // Camera identifier (for locking)
         std::string outputDir = "/tmp/record3k";        // Base output directory
+        ResultLogger::LogMode logMode = ResultLogger::LogMode::NONE;  // Result logging mode
     };
 
     /**
@@ -160,6 +162,9 @@ private:
     std::filesystem::path m_recordDir;      // /tmp/record3k/file-rec-<uid>
     std::filesystem::path m_framesDir;      // /tmp/record3k/file-rec-<uid>/frames
     std::filesystem::path m_othersDir;      // /tmp/record3k/file-rec-<uid>/others
+    
+    // Result logging
+    std::unique_ptr<ResultLogger> m_resultLogger;
 };
 
 } // namespace lbt

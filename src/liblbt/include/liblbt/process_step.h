@@ -49,6 +49,9 @@ public:
     // Get the name/type of this processing step
     virtual std::string getName() const = 0;
     
+    // Get the filter type of this processing step
+    virtual FilterType getFilterType() const = 0;
+    
     // Check if this step is available (e.g., CUDA might not be available)
     virtual bool isAvailable() const = 0;
     

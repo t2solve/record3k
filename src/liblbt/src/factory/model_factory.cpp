@@ -114,14 +114,14 @@ StatusOr<api::CameraInfo> ModelFactory::fromJsonCamera(const Json::Value& j) {
 }
 
 // PipelineInfo
-StatusOr<api::PipelineInfo> ModelFactory::makePipelineInfo(std::optional<std::string> pipelineUID, std::optional<std::string> description, std::string status, std::string dateBuild, std::string fileUID) {
+StatusOr<api::PipelineInfo> ModelFactory::makePipelineInfo(std::optional<std::string> pipelineUID, std::optional<std::string> description, std::string status, std::string dateBuild, std::optional<std::string> fileUID) {
     std::string uid = pipelineUID && !pipelineUID->empty() ? trim(*pipelineUID) : generatePipelineUID();
     status = trim(status);
     dateBuild = trim(dateBuild);
-    fileUID = trim(fileUID);
     if (!isReasonableUID(uid)) return {"Invalid pipelineUID"};
     if (!isIso8601Like(dateBuild)) return {"dateBuild not ISO8601-like"};
-    if (!isReasonableUID(fileUID)) return {"Invalid fileUID"};
+    // Validate fileUID only if provided
+    if (fileUID && !fileUID->empty() && !isReasonableUID(*fileUID)) return {"Invalid fileUID"};
     if (!nonEmpty(status)) status = "unknown";
     api::PipelineInfo p{uid, description, status, dateBuild, fileUID};
     return p;
@@ -131,7 +131,7 @@ StatusOr<api::PipelineInfo> ModelFactory::fromJsonPipeline(const Json::Value& j)
                             j.isMember("description")? std::optional<std::string>(j["description"].asString()) : std::nullopt,
                             j.get("status","" ).asString(),
                             j.get("dateBuild","" ).asString(),
-                            j.get("fileUID","" ).asString());
+                            j.isMember("fileUID") ? std::optional<std::string>(j["fileUID"].asString()) : std::nullopt);
 }
 
 // CalibrationInfo

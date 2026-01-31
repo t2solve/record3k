@@ -2,6 +2,8 @@
 #include <liblbt/record_manager_locker.h>
 #include <liblbt/processing_pipeline.h>
 #include <liblbt/frame_memory_object.h>
+#include <liblbt/result_logger.h>
+#include <liblbt/file_manager.h>
 
 #include <iostream>
 #include <fstream>
@@ -21,6 +23,21 @@ RecordManager::RecordManager(RecordConfig config)
     m_recordDir = std::filesystem::path(m_config.outputDir) / ("file-rec-" + m_config.recordUID);
     m_framesDir = m_recordDir / "frames";
     m_othersDir = m_recordDir / "others";
+    
+    // Initialize ResultLogger if logging is enabled
+    if (m_config.logMode != ResultLogger::LogMode::NONE) {
+        ResultLogger::Config logConfig;
+        logConfig.recordDir = m_recordDir;
+        logConfig.framesDir = m_framesDir;
+        logConfig.othersDir = m_othersDir;
+        logConfig.mode = m_config.logMode;
+        logConfig.saveMetadata = true;
+        logConfig.saveDebugImages = true;
+        
+        m_resultLogger = std::make_unique<ResultLogger>(logConfig);
+        std::cout << "[RecordManager] ResultLogger initialized in mode: " 
+                  << (m_config.logMode == ResultLogger::LogMode::DEBUG ? "DEBUG" : "PRODUCTION") << std::endl;
+    }
 }
 
 RecordManager::~RecordManager() {
@@ -83,6 +100,45 @@ bool RecordManager::start() {
         return false;
     }
     
+    // Always add FrameWriter for main frames directory if not present
+    // This ensures frames are written to recordDir/frames/ for normal output
+    {
+        std::string framesPath = m_framesDir.string();
+        bool added = ProcessingPipeline::addFrameWriterIfNotExists(
+            m_config.pipeline.steps,
+            m_config.pipeline.configs,
+            ProcessingMode::CUDA_PREFERRED,
+            framesPath,
+            "jpg"
+        );
+        if (added) {
+            std::cout << "[RecordManager] Added FrameWriter to pipeline for frames output: " << framesPath << std::endl;
+        } else {
+            auto successFlag = false;
+            // Reset path if FrameWriter already exists - find its index in the steps vector
+            for (size_t i = 0; i < m_config.pipeline.steps.size(); ++i) {
+                if (m_config.pipeline.steps[i] && 
+                    m_config.pipeline.steps[i]->getFilterType() == FilterType::FRAME_WRITER) {
+                    // Update the config at the same index
+                    if (i < m_config.pipeline.configs.size()) {
+                        m_config.pipeline.configs[i].setParameter("output_dir", framesPath);
+                        std::cout << "[RecordManager] Updated existing FrameWriter output directory to: " << framesPath << std::endl;
+                        successFlag = true;
+                    }
+                    //break;//we do all in case of multiple FrameWriters
+                }
+            }
+            if (!successFlag) 
+            {
+                std::cerr << "[RecordManager] Warning: Failed to update existing FrameWriter output directory" << std::endl;
+            }
+            else 
+            {
+                std::cout << "[RecordManager] FrameWriter already exists in pipeline" << std::endl;
+            }
+        }
+    }
+    
     // Reset state
     m_stopRequested = false;
     {
@@ -125,6 +181,25 @@ void RecordManager::stop() {
 void RecordManager::recordingLoop() {
     m_state = State::RECORDING;
     
+    // Open log file in others directory
+    std::ofstream logFile((m_othersDir / "log.txt").string());
+    auto logToFile = [&logFile](const std::string& message) {
+        if (logFile.is_open()) {
+            auto now = std::chrono::system_clock::now();
+            auto time_t = std::chrono::system_clock::to_time_t(now);
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()) % 1000;
+            
+            std::tm tm_buf;
+            gmtime_r(&time_t, &tm_buf);
+            
+            logFile << std::put_time(&tm_buf, "%Y-%m-%dT%H:%M:%S")
+                   << "." << std::setfill('0') << std::setw(3) << ms.count()
+                   << "Z " << message << std::endl;
+            logFile.flush();
+        }
+    };
+    
     try {
         // Calculate timing parameters
         auto interval = std::chrono::milliseconds(static_cast<int>(1000.0 / m_config.targetFPS));
@@ -132,13 +207,29 @@ void RecordManager::recordingLoop() {
         
         auto startTime = std::chrono::steady_clock::now();
         auto lastFrameTime = startTime;
+
+        std::vector<cv::Point2f> mass_center_list;
+        std::vector<cv::Point2d> world_center_list; 
+        std::vector<uint64_t> frame_timestamps_list;
         
         double avgFPS = 0.0;
         const double alpha = 0.1; // Exponential moving average factor
         int frameCounter = 0;
         
-        std::cout << "[RecordManager] Recording loop started - Target FPS: " << m_config.targetFPS 
-                  << ", Duration: " << m_config.totalTimeSeconds << "s" << std::endl;
+        // Log start information
+        std::stringstream startMsg;
+        auto startTimeSys = std::chrono::system_clock::now();
+        auto start_time_t = std::chrono::system_clock::to_time_t(startTimeSys);
+        std::tm tm_buf;
+        gmtime_r(&start_time_t, &tm_buf);
+        startMsg << "Recording started - RecordUID: " << m_config.recordUID
+                 << ", CameraUID: " << m_config.cameraUID
+                 << ", Target FPS: " << m_config.targetFPS
+                 << ", Duration: " << m_config.totalTimeSeconds << "s"
+                 << ", Start Time: " << std::put_time(&tm_buf, "%Y-%m-%dT%H:%M:%SZ");
+        
+        std::cout << "[RecordManager] " << startMsg.str() << std::endl;
+        logToFile(startMsg.str());
         
         // Main recording loop
         while (!m_stopRequested) {
@@ -154,7 +245,9 @@ void RecordManager::recordingLoop() {
             // Acquire frame
             auto frame = m_config.frameSource->nextFrame();
             if (!frame) {
-                std::cerr << "[RecordManager] Failed to acquire frame, stopping" << std::endl;
+                std::string errMsg = "Failed to acquire frame, stopping";
+                std::cerr << "[RecordManager] " << errMsg << std::endl;
+                logToFile("ERROR: " + errMsg);
                 m_state = State::FAILURE;
                 if (!m_config.cameraUID.empty()) {
                     RecordManagerLocker::instance().updateState(m_config.cameraUID, "error", "Failed to acquire frame");
@@ -169,9 +262,29 @@ void RecordManager::recordingLoop() {
                     *frame,
                     m_config.pipeline.configs
                 );
+
+                uint64_t frameTimeTimeStamp = result.timestampNs();
+                
+                // Use ResultLogger to log frame and metadata
+                if (m_resultLogger) {
+                    m_resultLogger->logFrame(frameCounter, *frame, result);
+                }
+                
+                // Collect mass center data for analysis
+                if (result.hasMetadata("mass_center_point_pixel")) {
+                    cv::Point2f massCenter = result.getMetadata<cv::Point2f>("mass_center_point_pixel");
+                    cv::Point2d worldPt = result.getMetadata<cv::Point2d>("mass_center_point_world");
+                    if (massCenter.x >= 0 && massCenter.y >= 0) {
+                        mass_center_list.push_back(massCenter);
+                        world_center_list.push_back(worldPt);
+                        frame_timestamps_list.push_back(frameTimeTimeStamp);
+                    }
+                }
                 frameCounter++;
             } catch (const std::exception& e) {
-                std::cerr << "[RecordManager] Pipeline processing error: " << e.what() << std::endl;
+                std::string errMsg = std::string("Pipeline processing error: ") + e.what();
+                std::cerr << "[RecordManager] " << errMsg << std::endl;
+                logToFile("ERROR: " + errMsg);
                 m_state = State::FAILURE;
                 if (!m_config.cameraUID.empty()) {
                     RecordManagerLocker::instance().updateState(m_config.cameraUID, "error", std::string("Pipeline error: ") + e.what());
@@ -192,13 +305,17 @@ void RecordManager::recordingLoop() {
                 std::lock_guard<std::mutex> lock(m_statsMutex);
                 m_stats.framesRecorded = frameCounter;
                 m_stats.actualFPS = avgFPS;
+
             }
             
             // Log progress periodically
             if (frameCounter % 100 == 0) {
-                std::cout << "[RecordManager] Progress: " << frameCounter << " frames, "
+                std::stringstream progressMsg;
+                progressMsg << "Progress: " << frameCounter << " frames, "
                           << "Avg FPS: " << std::fixed << std::setprecision(2) << avgFPS
-                          << ", Elapsed: " << std::chrono::duration<double>(elapsed).count() << "s" << std::endl;
+                          << ", Elapsed: " << std::chrono::duration<double>(elapsed).count() << "s";
+                std::cout << "[RecordManager] " << progressMsg.str() << std::endl;
+                logToFile(progressMsg.str());
             }
             
             // Sleep to maintain target FPS
@@ -219,12 +336,35 @@ void RecordManager::recordingLoop() {
         
         if (m_state != State::FAILURE) {
             m_state = State::STOPPED;
+            
+            // Calculate final statistics
+            auto endTimeSys = std::chrono::system_clock::now();
+            auto end_time_t = std::chrono::system_clock::to_time_t(endTimeSys);
+            std::tm tm_buf_end;
+            gmtime_r(&end_time_t, &tm_buf_end);
+            
+            double totalDuration = std::chrono::duration<double>(m_stats.endTime - m_stats.startTime).count();
+            
+            std::stringstream finalMsg;
+            finalMsg << "Recording completed successfully:\n"
+                    << "  Frames recorded: " << frameCounter << "\n"
+                    << "  Average FPS: " << std::fixed << std::setprecision(2) << avgFPS << "\n"
+                    << "  Total duration: " << std::setprecision(3) << totalDuration << "s\n"
+                    << "  End time: " << std::put_time(&tm_buf_end, "%Y-%m-%dT%H:%M:%SZ");
+            
             std::cout << "[RecordManager] Recording completed successfully: " 
                       << frameCounter << " frames recorded" << std::endl;
+            logToFile(finalMsg.str());
+            
+            // Write ResultLogger summary
+            if (m_resultLogger) {
+                m_resultLogger->writeSummary(frameCounter, totalDuration);
+            }
             
             // Save metadata
             if (!saveRecordMetadata()) {
                 std::cerr << "[RecordManager] Warning: Failed to save record metadata" << std::endl;
+                logToFile("WARNING: Failed to save record metadata");
             }
             
             // Copy optional files
@@ -234,18 +374,33 @@ void RecordManager::recordingLoop() {
             try {
                 std::string pipelineJsonPath = (m_recordDir / ("pipeline-" + m_config.recordUID + ".json")).string();
                 PipelineConfigLoader::saveToJSON(pipelineJsonPath, m_config.pipeline);
+                logToFile("Pipeline configuration saved");
             } catch (const std::exception& e) {
-                std::cerr << "[RecordManager] Warning: Failed to save pipeline config: " << e.what() << std::endl;
+                std::string warnMsg = std::string("Failed to save pipeline config: ") + e.what();
+                std::cerr << "[RecordManager] Warning: " << warnMsg << std::endl;
+                logToFile("WARNING: " + warnMsg);
             }
         }
         
+        // Close log file
+        if (logFile.is_open()) {
+            logFile.close();
+        }
+        
     } catch (const std::exception& e) {
-        std::cerr << "[RecordManager] Recording loop exception: " << e.what() << std::endl;
+        std::string errMsg = std::string("Recording loop exception: ") + e.what();
+        std::cerr << "[RecordManager] " << errMsg << std::endl;
+        logToFile("EXCEPTION: " + errMsg);
         m_state = State::FAILURE;
         
         // Update error state in locker
         if (!m_config.cameraUID.empty()) {
             RecordManagerLocker::instance().updateState(m_config.cameraUID, "error", e.what());
+        }
+        
+        // Close log file
+        if (logFile.is_open()) {
+            logFile.close();
         }
     }
 }
@@ -342,14 +497,19 @@ void RecordManager::copyOptionalFiles() {
             std::filesystem::path dstPath = m_othersDir / ("calibration-" + m_config.recordUID + srcPath.extension().string());
             std::filesystem::copy_file(srcPath, dstPath, std::filesystem::copy_options::overwrite_existing);
             std::cout << "[RecordManager] Copied calibration file to: " << dstPath << std::endl;
+        } else if (m_config.calibrationFile) {
+            std::cerr << "[RecordManager] Warning: Calibration file not found: " << *m_config.calibrationFile << std::endl;
         }
         
-        // Copy study file if provided
+        // Copy study file if provided (will be included in packed archive)
         if (m_config.studyFile && std::filesystem::exists(*m_config.studyFile)) {
             std::filesystem::path srcPath(*m_config.studyFile);
             std::filesystem::path dstPath = m_recordDir / ("study-" + m_config.recordUID + ".json");
             std::filesystem::copy_file(srcPath, dstPath, std::filesystem::copy_options::overwrite_existing);
-            std::cout << "[RecordManager] Copied study file to: " << dstPath << std::endl;
+            std::cout << "[RecordManager] Copied study file to record directory: " << dstPath << std::endl;
+            std::cout << "[RecordManager] Study info will be included in packed archive (tar.gz)" << std::endl;
+        } else if (m_config.studyFile) {
+            std::cerr << "[RecordManager] Warning: Study file not found: " << *m_config.studyFile << std::endl;
         }
         
     } catch (const std::filesystem::filesystem_error& e) {
@@ -425,6 +585,23 @@ std::optional<std::filesystem::path> RecordManager::pack() {
         std::cout << "[RecordManager] Successfully packed to: " << archivePath << std::endl;
         std::cout << "[RecordManager] Archive size: " << std::filesystem::file_size(archivePath) << " bytes" << std::endl;
         
+        // Create file info metadata for the packed archive using InfoDataManager (via FileManager callback)
+        std::string fileUID = "file-rec-" + m_config.recordUID;
+        
+        bool fileInfoCreated = FileManager::instance().createFileInfo(
+            fileUID,
+            archivePath,
+            m_config.recordUID,
+            m_config.cameraUID
+        );
+        
+        if (fileInfoCreated) {
+            std::cout << "[RecordManager] Created FileInfo entry: " << fileUID << std::endl;
+        } else {
+            std::cerr << "[RecordManager] Warning: Failed to create FileInfo entry for: " << fileUID << std::endl;
+        }
+
+
         m_state = State::PACKED;
         return archivePath;
         

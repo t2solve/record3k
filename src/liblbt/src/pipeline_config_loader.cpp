@@ -109,10 +109,21 @@ PipelineConfigLoader::PipelineConfig PipelineConfigLoader::loadFromXML(const std
     }
 
     fs.release();
+    
+    // Validate loaded configuration
+    std::string validationError;
+    if (!validate(config, validationError)) {
+        std::cerr << "[PipelineConfigLoader] Warning: " << validationError << std::endl;
+        // Don't throw - just warn, allow loading potentially incomplete configs
+    }
+    
     return config;
 }
 
 void PipelineConfigLoader::saveToXML(const std::string& filename, const PipelineConfig& config) {
+    // Validate before saving
+    validateOrThrow(config);
+    
     cv::FileStorage fs(filename, cv::FileStorage::WRITE);
     
     fs << "pipeline" << "{";
@@ -153,45 +164,73 @@ void PipelineConfigLoader::saveToXML(const std::string& filename, const Pipeline
     fs.release();
 }
 
-void PipelineConfigLoader::saveToJSON(const std::string& filename, const PipelineConfig& config) {
-    cv::FileStorage fs(filename, cv::FileStorage::WRITE | cv::FileStorage::FORMAT_JSON);
-    
-    fs << "pipeline" << "{";
-    fs << "processing_mode" << processingModeToString(config.mode);
-    fs << "steps" << "[";
-    
-    for (size_t i = 0; i < config.steps.size(); ++i) {
-        fs << "{";
-        fs << "name" << config.steps[i]->getName();
-        fs << "enabled" << 1;
-        fs << "parameters" << "{";
-        
-        // Write all parameter types from FilterConfig
-        // 1. Double parameters
-        const auto& params = config.configs[i].getAllParameters();
-        for (const auto& param : params) {
-            fs << param.first << param.second;
-        }
-        
-        // 2. String parameters
-        const auto& stringParams = config.configs[i].getAllStringParameters();
-        for (const auto& param : stringParams) {
-            fs << param.first << param.second;
-        }
-        
-        // 3. Mat parameters (camera matrices, etc.)
-        const auto& matParams = config.configs[i].getAllMatParameters();
-        for (const auto& param : matParams) {
-            fs << param.first << param.second;
-        }
-        
-        fs << "}";
-        fs << "}";
+bool PipelineConfigLoader::saveToJSON(const std::string& filename, const PipelineConfig& config) {
+    // Validate before saving
+    try {
+        validateOrThrow(config);
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineConfigLoader::saveToJSON] Validation failed: " << e.what() << std::endl;
+        return false;
     }
     
-    fs << "]";
-    fs << "}";
-    fs.release();
+    try {
+        cv::FileStorage fs(filename, cv::FileStorage::WRITE | cv::FileStorage::FORMAT_JSON);
+        
+        // Write metadata at top level (if present)
+        if (!config.pipelineUID.empty()) {
+            fs << "pipelineUID" << config.pipelineUID;
+        }
+        if (!config.description.empty()) {
+            fs << "description" << config.description;
+        }
+        if (!config.status.empty()) {
+            fs << "status" << config.status;
+        }
+        if (!config.datetimeCreated.empty()) {
+            fs << "dateBuild" << config.datetimeCreated;
+        }
+    
+        fs << "pipeline" << "{";
+        fs << "processing_mode" << processingModeToString(config.mode);
+        fs << "steps" << "[";
+        
+        for (size_t i = 0; i < config.steps.size(); ++i) {
+            fs << "{";
+            fs << "name" << config.steps[i]->getName();
+            fs << "enabled" << 1;
+            fs << "parameters" << "{";
+            
+            // Write all parameter types from FilterConfig
+            // 1. Double parameters
+            const auto& params = config.configs[i].getAllParameters();
+            for (const auto& param : params) {
+                fs << param.first << param.second;
+            }
+            
+            // 2. String parameters
+            const auto& stringParams = config.configs[i].getAllStringParameters();
+            for (const auto& param : stringParams) {
+                fs << param.first << param.second;
+            }
+            
+            // 3. Mat parameters (camera matrices, etc.)
+            const auto& matParams = config.configs[i].getAllMatParameters();
+            for (const auto& param : matParams) {
+                fs << param.first << param.second;
+            }
+            
+            fs << "}";
+            fs << "}";
+        }
+        
+        fs << "]";
+        fs << "}";
+        fs.release();
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "[PipelineConfigLoader::saveToJSON] Error writing file: " << e.what() << std::endl;
+        return false;
+    }
 }
 
 PipelineConfigLoader::PipelineConfig PipelineConfigLoader::loadFromJSON(const std::string& filename) {
@@ -257,6 +296,10 @@ PipelineConfigLoader::PipelineConfig PipelineConfigLoader::loadFromJSON(const st
     }
     
     fs.release();
+    
+    // Validate loaded configuration
+    validateOrThrow(result);
+    
     return result;
 }
 
@@ -300,5 +343,73 @@ std::string PipelineConfigLoader::filterTypeToString(FilterType filterType) {
         case FilterType::CONTOUR_AREA_FILTER: return "CONTOUR_AREA_FILTER";
         case FilterType::MORPHOLOGY_CLOSE: return "MORPHOLOGY_CLOSE";
         default: return "NONE";
+    }
+}
+
+bool PipelineConfigLoader::validate(const PipelineConfig& config, std::string& errorMsg) {
+    // Check if steps and configs arrays have matching sizes
+    if (config.steps.size() != config.configs.size()) {
+        errorMsg = "Pipeline validation failed: steps.size() (" + 
+                   std::to_string(config.steps.size()) + 
+                   ") != configs.size() (" + 
+                   std::to_string(config.configs.size()) + ")";
+        return false;
+    }
+    
+    // Check if pipeline has at least one step
+    if (config.steps.empty()) {
+        errorMsg = "Pipeline validation failed: pipeline must have at least one processing step";
+        return false;
+    }
+    
+    // Validate each step
+    for (size_t i = 0; i < config.steps.size(); ++i) {
+        const auto& step = config.steps[i];
+        
+        // Check step is not null
+        if (!step) {
+            errorMsg = "Pipeline validation failed: step " + std::to_string(i) + " is null";
+            return false;
+        }
+        
+        // Check step name is not empty
+        std::string stepName = step->getName();
+        if (stepName.empty()) {
+            errorMsg = "Pipeline validation failed: step " + std::to_string(i) + " has empty name";
+            return false;
+        }
+        
+        // Check step is available (e.g., CUDA steps on non-CUDA system)
+        if (!step->isAvailable()) {
+            errorMsg = "Pipeline validation failed: step " + std::to_string(i) + 
+                      " (" + stepName + ") is not available on this system";
+            return false;
+        }
+        
+        // Check filter type is valid
+        FilterType ft = step->getFilterType();
+        if (ft == FilterType::NONE) {
+            errorMsg = "Pipeline validation failed: step " + std::to_string(i) + 
+                      " (" + stepName + ") has invalid filter type";
+            return false;
+        }
+    }
+    
+    // Validate processing mode
+    if (config.mode != ProcessingMode::CPU_ONLY && 
+        config.mode != ProcessingMode::CUDA_PREFERRED && 
+        config.mode != ProcessingMode::CUDA_ONLY) {
+        errorMsg = "Pipeline validation failed: invalid processing mode";
+        return false;
+    }
+    
+    // All validations passed
+    return true;
+}
+
+void PipelineConfigLoader::validateOrThrow(const PipelineConfig& config) {
+    std::string errorMsg;
+    if (!validate(config, errorMsg)) {
+        throw std::runtime_error(errorMsg);
     }
 }

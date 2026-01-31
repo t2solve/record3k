@@ -98,8 +98,14 @@ bool ContourAreaFilterCUDAStep::isAvailable() const {
 }
 
 FrameMemoryObject ContourAreaFilterCUDAStep::process(const FrameMemoryObject& input, const FilterConfig& config) {
-    if (input.isEmpty() || !isAvailable()) {
-        return FrameMemoryObject();
+    if (input.isEmpty()) {
+        std::cerr << "[ContourAreaFilterCUDAStep] WARNING: Input frame is empty, passing through" << std::endl;
+        return input;
+    }
+    
+    if (!isAvailable()) {
+        std::cerr << "[ContourAreaFilterCUDAStep] WARNING: CUDA not available, passing through input frame" << std::endl;
+        return input;
     }
     
     // Download from GPU to CPU for contour detection

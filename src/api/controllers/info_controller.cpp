@@ -50,8 +50,8 @@ void InfoController::getCamera(const HttpRequestPtr&, std::function<void (const 
 void InfoController::listPipelines(const HttpRequestPtr&, std::function<void (const HttpResponsePtr &)> && cb) {
 #ifdef DEBUG_FLAG_MOCK
     Json::Value arr(Json::arrayValue);
-    PipelineInfo p1{"pipe-abc", "Test pipeline", "active", "2025-11-07T00:00:00Z", "file-pipe-abc"};
-    PipelineInfo p2{"pipe-def", "Alt pipeline", "inactive", "2025-11-06T00:00:00Z", "file-pipe-def"};
+    PipelineInfo p1{"pipe-abc", "Test pipeline", "active", "2025-11-07T00:00:00Z", std::nullopt};
+    PipelineInfo p2{"pipe-def", "Alt pipeline", "inactive", "2025-11-06T00:00:00Z", std::nullopt};
     arr.append(p1.toJson());
     arr.append(p2.toJson());
     cb(HttpResponse::newHttpJsonResponse(arr));
@@ -62,7 +62,7 @@ void InfoController::listPipelines(const HttpRequestPtr&, std::function<void (co
 
 void InfoController::getPipeline(const HttpRequestPtr&, std::function<void (const HttpResponsePtr &)> && cb, const std::string &pipelineUID) {
 #ifdef DEBUG_FLAG_MOCK
-    PipelineInfo p{pipelineUID, "Mock pipeline description", "active", "2025-11-07T00:00:00Z", "file-"+pipelineUID};
+    PipelineInfo p{pipelineUID, "Mock pipeline description", "active", "2025-11-07T00:00:00Z", std::nullopt};
     cb(HttpResponse::newHttpJsonResponse(p.toJson()));
 #else
     auto v = infoDataManager().get("pipelines", pipelineUID);
@@ -79,6 +79,7 @@ void InfoController::listCalibrations(const HttpRequestPtr&, std::function<void 
     arr.append(c2.toJson());
     cb(HttpResponse::newHttpJsonResponse(arr));
 #else
+    LOG_INFO << "Listing calibrations via InfoDataManager";
     cb(HttpResponse::newHttpJsonResponse(infoDataManager().list("calibrations")));
 #endif
 }
@@ -102,6 +103,7 @@ void InfoController::listRecords(const HttpRequestPtr&, std::function<void (cons
     arr.append(r2.toJson());
     cb(HttpResponse::newHttpJsonResponse(arr));
 #else
+    LOG_INFO << "Listing records via InfoDataManager";
     cb(HttpResponse::newHttpJsonResponse(infoDataManager().list("records")));
 #endif
 }
@@ -125,6 +127,7 @@ void InfoController::listFiles(const HttpRequestPtr&, std::function<void (const 
     arr.append(f2.toJson());
     cb(HttpResponse::newHttpJsonResponse(arr));
 #else
+    LOG_INFO << "Listing files via InfoDataManager";
     cb(HttpResponse::newHttpJsonResponse(infoDataManager().list("files")));
 #endif
 }
@@ -148,6 +151,7 @@ void InfoController::listStudies(const HttpRequestPtr&, std::function<void (cons
     arr.append(s2.toJson());
     cb(HttpResponse::newHttpJsonResponse(arr));
 #else
+    LOG_INFO << "Listing studies via InfoDataManager";
     cb(HttpResponse::newHttpJsonResponse(infoDataManager().list("studies")));
 #endif
 }

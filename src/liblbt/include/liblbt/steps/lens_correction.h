@@ -13,6 +13,7 @@ class LensCorrectionCPUStep : public ProcessStep {
 public:
     FrameMemoryObject process(const FrameMemoryObject& input, const FilterConfig& config) override;
     std::string getName() const override { return "LensCorrection_CPU"; }
+    FilterType getFilterType() const override { return FilterType::LENS_CORRECTION; }
     bool isAvailable() const override { return true; }
     ProcessingMode getMode() const override { return ProcessingMode::CPU_ONLY; }
     MemoryLocation getPreferredMemoryLocation() const override { return MemoryLocation::CPU; }
@@ -23,6 +24,7 @@ class LensCorrectionCUDAStep : public ProcessStep {
 public:
     FrameMemoryObject process(const FrameMemoryObject& input, const FilterConfig& config) override;
     std::string getName() const override { return "LensCorrection_CUDA"; }
+    FilterType getFilterType() const override { return FilterType::LENS_CORRECTION; }
     bool isAvailable() const override;
     ProcessingMode getMode() const override { return ProcessingMode::CUDA_ONLY; }
     MemoryLocation getPreferredMemoryLocation() const override { return MemoryLocation::GPU; }

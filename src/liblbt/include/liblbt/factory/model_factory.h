@@ -50,7 +50,7 @@ public:
         std::optional<std::string> description,
         std::string status,
         std::string dateBuild,
-        std::string fileUID);
+        std::optional<std::string> fileUID = std::nullopt);
 
     static StatusOr<api::CalibrationInfo> makeCalibrationInfo(
         std::optional<std::string> calibrationUID,

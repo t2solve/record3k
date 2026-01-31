@@ -2,22 +2,31 @@
 #include "MainWindow.h"
 #include <string>
 #include <iostream>
+#include <exception>
+#include <QMessageBox>
 
 int main(int argc, char *argv[]) {
-    // Defaults: image directory and pipeline XML
-    std::string image_dir = "build/bin/data-frames";
-    std::string pipeline_xml = "build/bin/pipeline_test3_config.xml";
-    // Positional overrides if provided
-    if (argc >= 2) image_dir = argv[1];
-    if (argc >= 3) pipeline_xml = argv[2];
-    if (argc == 2 && (std::string(argv[1]) == "-h" || std::string(argv[1]) == "--help")) {
-        std::cerr << "Usage: " << argv[0] << " [image_directory] [pipeline_xml]" << std::endl;
-        std::cerr << "Defaults: image_directory='" << image_dir << "', pipeline_xml='" << pipeline_xml << "'\n";
-        return 0;
-    }
+    try {
+        if (argc >= 2 && (std::string(argv[1]) == "-h" || std::string(argv[1]) == "--help")) {
+            std::cerr << "Usage: " << argv[0] << std::endl;
+            std::cerr << "Pipeline Viewer - Connect to record3k API and view recordings\n";
+            std::cerr << "Use the GUI to configure API connection and load records\n";
+            return 0;
+        }
 
-    QApplication app(argc, argv);
-    MainWindow w(QString::fromStdString(image_dir), QString::fromStdString(pipeline_xml));
-    w.show();
-    return app.exec();
+        QApplication app(argc, argv);
+        MainWindow w;
+        w.show();
+        return app.exec();
+    } catch (const std::exception& e) {
+        QMessageBox::critical(nullptr, "Fatal Error", 
+            QString("Application crashed with error:\n\n") + e.what());
+        std::cerr << "Fatal error: " << e.what() << std::endl;
+        return 1;
+    } catch (...) {
+        QMessageBox::critical(nullptr, "Fatal Error", 
+            "Application crashed with unknown error");
+        std::cerr << "Fatal error: unknown exception" << std::endl;
+        return 1;
+    }
 }

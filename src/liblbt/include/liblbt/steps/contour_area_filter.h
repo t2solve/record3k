@@ -13,6 +13,7 @@ class ContourAreaFilterCPUStep : public ProcessStep {
 public:
     FrameMemoryObject process(const FrameMemoryObject& input, const FilterConfig& config) override;
     std::string getName() const override { return "ContourAreaFilter_CPU"; }
+    FilterType getFilterType() const override { return FilterType::CONTOUR_AREA_FILTER; }
     bool isAvailable() const override { return true; }
     ProcessingMode getMode() const override { return ProcessingMode::CPU_ONLY; }
     MemoryLocation getPreferredMemoryLocation() const override { return MemoryLocation::CPU; }
@@ -23,6 +24,7 @@ class ContourAreaFilterCUDAStep : public ProcessStep {
 public:
     FrameMemoryObject process(const FrameMemoryObject& input, const FilterConfig& config) override;
     std::string getName() const override { return "ContourAreaFilter_CUDA"; }
+    FilterType getFilterType() const override { return FilterType::CONTOUR_AREA_FILTER; }
     bool isAvailable() const override;
     ProcessingMode getMode() const override { return ProcessingMode::CUDA_ONLY; }
     MemoryLocation getPreferredMemoryLocation() const override { return MemoryLocation::GPU; }

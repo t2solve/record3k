@@ -13,6 +13,11 @@ public:
 
     std::unique_ptr<FrameMemoryObject> nextFrame() override;
     bool isReady() const override;
+    
+    // Additional methods for frame navigation
+    void seekToFrame(size_t index);
+    size_t getCurrentIndex() const { return currentIndex_; }
+    size_t getFrameCount() const { return images_.size(); }
 
 private:
     // Preloaded images (up to a cap) for stable profiling without disk I/O jitter

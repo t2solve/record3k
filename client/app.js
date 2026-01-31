@@ -5,6 +5,7 @@ class BugTrackerApp {
     constructor() {
         this.cameras = [];
         this.records = [];
+        this.files = [];
         this.currentPage = this.detectPage();
         this.init();
     }
@@ -26,7 +27,11 @@ class BugTrackerApp {
             this.loadCameras();
         } else if (this.currentPage === 'records') {
             document.getElementById('refresh-records-btn')?.addEventListener('click', () => this.loadRecords());
+            document.getElementById('refresh-files-btn')?.addEventListener('click', () => this.loadFiles());
+            document.getElementById('records-sort')?.addEventListener('change', () => this.renderRecords());
+            document.getElementById('files-sort')?.addEventListener('change', () => this.renderFiles());
             this.loadRecords();
+            this.loadFiles();
         } else if (this.currentPage === 'start') {
             this.initStartRecordingPage();
         }
@@ -497,9 +502,9 @@ class BugTrackerApp {
         const recordsListEl = document.getElementById('records-list');
 
         // Show loading state
-        loadingEl.style.display = 'block';
-        errorEl.style.display = 'none';
-        recordsListEl.innerHTML = '';
+        if (loadingEl) loadingEl.style.display = 'block';
+        if (errorEl) errorEl.style.display = 'none';
+        if (recordsListEl) recordsListEl.innerHTML = '';
 
         try {
             const response = await fetch(`${API_BASE_URL}/info/records/list`);
@@ -509,68 +514,86 @@ class BugTrackerApp {
             }
 
             this.records = await response.json();
+            console.log('Loaded records:', this.records.length);
             this.renderRecords();
             
         } catch (error) {
             console.error('Failed to load records:', error);
-            errorEl.textContent = `Failed to load records: ${error.message}`;
-            errorEl.style.display = 'block';
+            if (errorEl) {
+                errorEl.textContent = `Failed to load records: ${error.message}`;
+                errorEl.style.display = 'block';
+            }
         } finally {
-            loadingEl.style.display = 'none';
+            if (loadingEl) loadingEl.style.display = 'none';
         }
     }
 
     renderRecords() {
         const recordsListEl = document.getElementById('records-list');
         
+        if (!recordsListEl) return;
+        
         if (this.records.length === 0) {
             recordsListEl.innerHTML = '<p class="no-data">No recording sessions found</p>';
             return;
         }
 
-        recordsListEl.innerHTML = this.records.map(record => {
-            const duration = record.durationInSeconds ? `${record.durationInSeconds.toFixed(1)}s` : 'N/A';
-            const startTime = record.startTime ? new Date(record.startTime).toLocaleString() : 'N/A';
-            const endTime = record.endTime ? new Date(record.endTime).toLocaleString() : 'In Progress';
-            const statusClass = record.status === 'finished' ? 'status-finished' : 
-                               record.status === 'running' ? 'status-running' : 'status-other';
+        // Sort records based on selected option
+        const sortSelect = document.getElementById('records-sort');
+        const sortOrder = sortSelect ? sortSelect.value : 'newest';
+        
+        const sortedRecords = [...this.records].sort((a, b) => {
+            const dateA = new Date(a.datetimeStart || 0);
+            const dateB = new Date(b.datetimeStart || 0);
+            return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+        });
+
+        recordsListEl.innerHTML = sortedRecords.map(record => {
+            const framesRecorded = record.framesRecorded || 0;
+            const actualFPS = record.actualFPS ? record.actualFPS.toFixed(2) : 'N/A';
+            const startTime = record.datetimeStart ? new Date(record.datetimeStart).toLocaleString() : 'N/A';
+            const endTime = record.datetimeEnd ? new Date(record.datetimeEnd).toLocaleString() : 'In Progress';
+            const statusClass = record.status === 'completed' ? 'status-finished' : 
+                               record.status === 'recording' ? 'status-running' : 'status-other';
             
             return `
                 <div class="record-card ${statusClass}">
                     <div class="record-header">
                         <div class="record-title">
-                            <h3>${record.isTest ? '🧪 Test' : '📹 Recording'}: ${this.escapeHtml(record.recordUID)}</h3>
+                            <h3>📹 Recording: ${this.escapeHtml(record.recordUID)}</h3>
                             <span class="status-badge ${record.status}">${record.status}</span>
                         </div>
                         <div class="record-meta">
-                            <span class="duration">${duration}</span>
+                            <span class="duration">${framesRecorded} frames @ ${actualFPS} FPS</span>
                         </div>
                     </div>
                     <div class="record-details">
+                        ${record.pipelineUID ? `
                         <div class="detail-row">
                             <span class="label">Pipeline:</span>
                             <span class="value"><code>${this.escapeHtml(record.pipelineUID)}</code></span>
                         </div>
+                        ` : ''}
+                        ${record.calibrationUID ? `
                         <div class="detail-row">
                             <span class="label">Calibration:</span>
                             <span class="value"><code>${this.escapeHtml(record.calibrationUID)}</code></span>
                         </div>
+                        ` : ''}
+                        ${record.studyInfoUID ? `
                         <div class="detail-row">
                             <span class="label">Study:</span>
                             <span class="value"><code>${this.escapeHtml(record.studyInfoUID)}</code></span>
                         </div>
+                        ` : ''}
                         <div class="detail-row">
                             <span class="label">Started:</span>
                             <span class="value">${startTime}</span>
                         </div>
+                        ${record.datetimeEnd ? `
                         <div class="detail-row">
                             <span class="label">Ended:</span>
                             <span class="value">${endTime}</span>
-                        </div>
-                        ${record.fileUID ? `
-                        <div class="detail-row">
-                            <span class="label">File:</span>
-                            <span class="value"><code>${this.escapeHtml(record.fileUID)}</code></span>
                         </div>
                         ` : ''}
                     </div>
@@ -578,20 +601,127 @@ class BugTrackerApp {
                         <button class="btn-action" onclick="app.viewRecordDetails('${this.escapeHtml(record.recordUID)}')">
                             📊 View Details
                         </button>
-                        ${record.fileUID ? `
-                        <button class="btn-action" onclick="app.downloadRecordFile('${this.escapeHtml(record.fileUID)}')">
-                            💾 Download
-                        </button>
-                        ` : ''}
-                        ${record.status === 'running' ? `
-                        <button class="btn-action btn-stop" onclick="app.stopRecord('${this.escapeHtml(record.recordUID)}')">
-                            ⏹️ Stop
-                        </button>
-                        ` : ''}
                     </div>
                 </div>
             `;
         }).join('');
+    }
+
+    async loadFiles() {
+        const loadingEl = document.getElementById('files-loading');
+        const errorEl = document.getElementById('files-error');
+        const filesListEl = document.getElementById('files-list');
+
+        // Show loading state
+        if (loadingEl) loadingEl.style.display = 'block';
+        if (errorEl) errorEl.style.display = 'none';
+        if (filesListEl) filesListEl.innerHTML = '';
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/info/files/list`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            this.files = await response.json();
+            console.log('Loaded files:', this.files.length);
+            this.renderFiles();
+            
+        } catch (error) {
+            console.error('Failed to load files:', error);
+            if (errorEl) {
+                errorEl.textContent = `Failed to load files: ${error.message}`;
+                errorEl.style.display = 'block';
+            }
+        } finally {
+            if (loadingEl) loadingEl.style.display = 'none';
+        }
+    }
+
+    renderFiles() {
+        const filesListEl = document.getElementById('files-list');
+        
+        if (!filesListEl) return;
+        
+        if (this.files.length === 0) {
+            filesListEl.innerHTML = '<p class="no-data">No files found</p>';
+            return;
+        }
+
+        // Sort files based on selected option
+        const sortSelect = document.getElementById('files-sort');
+        const sortOrder = sortSelect ? sortSelect.value : 'newest';
+        
+        const sortedFiles = [...this.files].sort((a, b) => {
+            const dateA = new Date(a.datetimeCreated || 0);
+            const dateB = new Date(b.datetimeCreated || 0);
+            return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+        });
+
+        filesListEl.innerHTML = sortedFiles.map(file => {
+            const sizeInMB = file.archiveSize ? (file.archiveSize / (1024 * 1024)).toFixed(2) : 'N/A';
+            const createdTime = file.datetimeCreated ? new Date(file.datetimeCreated).toLocaleString() : 'N/A';
+            
+            return `
+                <div class="file-card">
+                    <div class="file-header">
+                        <div class="file-title">
+                            <h3>📦 ${this.escapeHtml(file.fileUID)}</h3>
+                            <span class="file-size">${sizeInMB} MB</span>
+                        </div>
+                    </div>
+                    <div class="file-details">
+                        <div class="detail-row">
+                            <span class="label">Archive Path:</span>
+                            <span class="value"><code>${this.escapeHtml(file.archivePath)}</code></span>
+                        </div>
+                        ${file.recordUID ? `
+                        <div class="detail-row">
+                            <span class="label">Record UID:</span>
+                            <span class="value"><code>${this.escapeHtml(file.recordUID)}</code></span>
+                        </div>
+                        ` : ''}
+                        ${file.cameraUID ? `
+                        <div class="detail-row">
+                            <span class="label">Camera UID:</span>
+                            <span class="value"><code>${this.escapeHtml(file.cameraUID)}</code></span>
+                        </div>
+                        ` : ''}
+                        <div class="detail-row">
+                            <span class="label">Created:</span>
+                            <span class="value">${createdTime}</span>
+                        </div>
+                    </div>
+                    <div class="file-actions">
+                        <button class="btn-action" onclick="app.downloadFile('${this.escapeHtml(file.fileUID)}')">
+                            💾 Download
+                        </button>
+                        <button class="btn-action" onclick="app.viewFileDetails('${this.escapeHtml(file.fileUID)}')">
+                            📊 Details
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async viewFileDetails(fileUID) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/info/files/get/${fileUID}`);
+            if (response.ok) {
+                const file = await response.json();
+                alert(`File Details:\n${JSON.stringify(file, null, 2)}`);
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (error) {
+            alert(`Failed to load file details: ${error.message}`);
+        }
+    }
+
+    async downloadFile(fileUID) {
+        window.open(`${API_BASE_URL}/files/download/${fileUID}`, '_blank');
     }
 
     async viewRecordDetails(recordUID) {

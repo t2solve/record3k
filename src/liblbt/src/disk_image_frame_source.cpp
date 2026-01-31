@@ -95,3 +95,10 @@ bool DiskImageFrameSource::isReady() const
 {
     return !images_.empty();
 }
+
+void DiskImageFrameSource::seekToFrame(size_t index)
+{
+    if (index < images_.size()) {
+        currentIndex_ = index;
+    }
+}

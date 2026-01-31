@@ -36,6 +36,11 @@ void FileManager::initialize(const std::filesystem::path& dataRootPath,
     std::cout << "[FileManager]   Archive path: " << (m_dataRootPath / "files" / "bin").string() << std::endl;
 }
 
+void FileManager::setFileInfoCreator(FileInfoCreator creator) {
+    m_fileInfoCreator = std::move(creator);
+    std::cout << "[FileManager] FileInfoCreator callback registered" << std::endl;
+}
+
 std::filesystem::path FileManager::getTempOutputPath() const {
     return m_tempOutputPath;
 }
@@ -242,13 +247,19 @@ bool FileManager::createFileInfo(const std::string& fileUID,
             fileJson["cameraUID"] = cameraUID;
         }
         
+        // Use external data manager callback if provided
+        bool mdSuccess = true;
+        if (m_fileInfoCreator) {
+            mdSuccess = m_fileInfoCreator(fileUID, archivePath, recordUID, fileJson);
+        }
+        
         bool success = m_fileStore->put(fileUID, fileJson);
         if (success) {
             std::cout << "[FileManager] Created FileInfo: " << fileUID << std::endl;
         } else {
             std::cerr << "[FileManager] Failed to persist FileInfo: " << fileUID << std::endl;
         }
-        return success;
+        return success && mdSuccess;
         
     } catch (const std::exception& e) {
         std::cerr << "[FileManager] Exception creating FileInfo: " << e.what() << std::endl;

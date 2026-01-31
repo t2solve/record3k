@@ -35,7 +35,8 @@ FrameMemoryObject MassCenterOverlayCPUStep::process(const FrameMemoryObject& inp
         // Ensure we have an image on CPU
         cv::Mat img = input.getCpuMat().clone();
         if (img.empty()) {
-            return FrameMemoryObject();
+            std::cerr << "[MassCenterOverlay] WARNING: Input frame is empty, passing through" << std::endl;
+            return input;
         }
         // Retrieve contours from metadata (produced by ContourAreaFilter)
         if (!input.hasMetadata("filtered_contours")) {
@@ -65,7 +66,7 @@ FrameMemoryObject MassCenterOverlayCPUStep::process(const FrameMemoryObject& inp
         frameResult.setMetadata<cv::Point2f>("mass_center_point", center);
         return frameResult;
     } catch (const std::exception& e) {
-        std::cerr << "[MassCenterOverlay] Exception: " << e.what() << "\n";
-        return FrameMemoryObject();
+        std::cerr << "[MassCenterOverlay] Exception: " << e.what() << ", passing through input\n";
+        return input;
     }
 }

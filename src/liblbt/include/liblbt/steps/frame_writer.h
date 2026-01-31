@@ -11,6 +11,7 @@ public:
     
     FrameMemoryObject process(const FrameMemoryObject& input, const FilterConfig& config) override;
     std::string getName() const override { return "FrameWriter_CPU"; }
+    FilterType getFilterType() const override { return FilterType::FRAME_WRITER; }
     bool isAvailable() const override { return true; }
     ProcessingMode getMode() const override { return ProcessingMode::CPU_ONLY; }
     MemoryLocation getPreferredMemoryLocation() const override { return MemoryLocation::CPU; }

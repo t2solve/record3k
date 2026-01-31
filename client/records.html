@@ -24,13 +24,37 @@
             <section class="records-section">
                 <div class="section-header">
                     <h2>Recording Sessions</h2>
-                    <button id="refresh-records-btn" class="btn-refresh">🔄 Refresh</button>
+                    <div class="header-controls">
+                        <select id="records-sort" class="sort-select">
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                        </select>
+                        <button id="refresh-records-btn" class="btn-refresh">🔄 Refresh</button>
+                    </div>
                 </div>
                 
                 <div id="records-loading" class="loading">Loading records...</div>
                 <div id="records-error" class="error" style="display: none;"></div>
                 
                 <div id="records-list" class="records-list"></div>
+            </section>
+
+            <section class="files-section">
+                <div class="section-header">
+                    <h2>Files</h2>
+                    <div class="header-controls">
+                        <select id="files-sort" class="sort-select">
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                        </select>
+                        <button id="refresh-files-btn" class="btn-refresh">🔄 Refresh</button>
+                    </div>
+                </div>
+                
+                <div id="files-loading" class="loading" style="display: none;">Loading files...</div>
+                <div id="files-error" class="error" style="display: none;"></div>
+                
+                <div id="files-list" class="files-list"></div>
             </section>
         </main>
 

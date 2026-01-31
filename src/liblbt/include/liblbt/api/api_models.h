@@ -73,15 +73,15 @@ struct PipelineInfo {
     std::optional<std::string> description;
     std::string status;
     std::string dateBuild;   // ISO date/time
-    std::string fileUID;     // link to compressed xml (tar.gz)
+    std::optional<std::string> fileUID;     // optional: link to compressed xml (tar.gz)
 
     Json::Value toJson() const {
         Json::Value j;
         j["pipelineUID"] = pipelineUID;
         j["status"] = status;
         j["dateBuild"] = dateBuild;
-        j["fileUID"] = fileUID;
         setIfPresent(j, "description", description);
+        setIfPresent(j, "fileUID", fileUID);
         return j;
     }
     static PipelineInfo fromJson(const Json::Value& j) {

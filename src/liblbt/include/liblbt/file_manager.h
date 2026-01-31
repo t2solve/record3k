@@ -17,6 +17,13 @@ namespace lbt {
 class RecordManager;
 
 /**
+ * Callback for creating file info in external data manager
+ * Parameters: fileUID, archivePath, recordUID, metadata
+ * Returns: success boolean
+ */
+using FileInfoCreator = std::function<bool(const std::string&, const std::filesystem::path&, const std::string&, const Json::Value&)>;
+
+/**
  * FileManager - Singleton for managing recording file lifecycle
  * 
  * Responsibilities:
@@ -40,6 +47,11 @@ public:
      */
     void initialize(const std::filesystem::path& dataRootPath = "data",
                    const std::filesystem::path& tempOutputPath = "/tmp/record3k");
+    
+    /**
+     * Set the callback for creating file info in external data manager
+     */
+    void setFileInfoCreator(FileInfoCreator creator);
     
     /**
      * Get the temporary output directory for new recordings
@@ -127,6 +139,7 @@ private:
     std::filesystem::path m_tempOutputPath;
     std::map<std::string, RecordingInfo> m_recordings;  // recordUID -> RecordingInfo
     std::unique_ptr<JsonStore> m_fileStore;  // Metadata store for FileInfo entries
+    FileInfoCreator m_fileInfoCreator;  // Callback to external data manager
 };
 
 } // namespace lbt

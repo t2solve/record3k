@@ -22,7 +22,7 @@ SUBDIRS = \
     src/test3 \
     #src/test4 \
     src/test5 \
-    #src/pipelineviewer #\
+    src/pipelineviewer \
     #src/debugcameraload \
 
     

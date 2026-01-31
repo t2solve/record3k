@@ -8,6 +8,7 @@ class ProjectPointTo2DSurfaceCPUStep : public ProcessStep {
 public:
     FrameMemoryObject process(const FrameMemoryObject& input, const FilterConfig& config) override;
     std::string getName() const override { return "ProjectPointTo2DSurface_CPU"; }
+    FilterType getFilterType() const override { return FilterType::PROJECT_POINT_TO_2D_SURFACE; }
     bool isAvailable() const override { return true; }
     ProcessingMode getMode() const override { return ProcessingMode::CPU_ONLY; }
     MemoryLocation getPreferredMemoryLocation() const override { return MemoryLocation::CPU; }
