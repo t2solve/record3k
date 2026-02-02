@@ -250,6 +250,14 @@ int main(int argc, char* argv[])
             return;
         }
         
+        // Allow access to documentation endpoints without authentication
+        std::string path = req->path();
+        if (path == "/swagger" || path == "/openapi.json") {
+            LOG_DEBUG << "Allowing unauthenticated access to documentation: " << path;
+            accb();
+            return;
+        }
+        
         // Check API token for all other requests
         std::string authHeader = req->getHeader("Authorization");
         std::string expectedAuth = "Bearer " + API_TOKEN;
