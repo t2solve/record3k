@@ -17,9 +17,11 @@ public:
     explicit ConfigDialog(QWidget* parent = nullptr);
     
     QString apiUrl() const;
+    QString apiToken() const;
     QString workDir() const;
     
     void setApiUrl(const QString& url);
+    void setApiToken(const QString& token);
     void setWorkDir(const QString& dir);
     
     /**
@@ -38,6 +40,7 @@ private slots:
 
 private:
     QLineEdit* apiUrlEdit_;
+    QLineEdit* apiTokenEdit_;
     QLineEdit* workDirEdit_;
     QSettings settings_;
 };

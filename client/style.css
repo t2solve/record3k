@@ -140,6 +140,18 @@ button {
     border-color: var(--primary-color);
 }
 
+.btn-stop {
+    background-color: #fef2f2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
+.btn-stop:hover {
+    background-color: var(--error-color);
+    color: white;
+    border-color: var(--error-color);
+}
+
 /* Loading & Error States */
 .loading {
     text-align: center;
@@ -860,4 +872,168 @@ footer #api-status {
 .file-actions button {
     flex: 1;
     min-width: 120px;
+}
+
+/* Settings Page Styles */
+.settings-section {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.settings-form {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    margin-bottom: 2rem;
+}
+
+.settings-form .form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 1rem;
+    font-family: 'Courier New', monospace;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.token-input-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.token-input-group .form-input {
+    flex: 1;
+}
+
+.btn-icon {
+    padding: 0.75rem 1rem;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all 0.2s;
+}
+
+.btn-icon:hover {
+    background: var(--border-color);
+}
+
+.form-help {
+    display: block;
+    margin-top: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.btn-primary {
+    flex: 1;
+    padding: 0.75rem 1.5rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary:hover {
+    background: #1e40af;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    flex: 1;
+    padding: 0.75rem 1.5rem;
+    background: var(--bg-color);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+    background: var(--border-color);
+}
+
+.settings-info {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+}
+
+.settings-info h3 {
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
+.settings-info ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.settings-info li {
+    margin-bottom: 0.75rem;
+    padding-left: 1.5rem;
+    position: relative;
+}
+
+.settings-info li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: var(--primary-color);
+    font-weight: bold;
+}
+
+.settings-info ul ul {
+    margin-top: 0.5rem;
+    padding-left: 1.5rem;
+}
+
+.settings-info code {
+    background: var(--bg-color);
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+}
+
+.status-info {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.status-success {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-error {
+    background: #fee2e2;
+    color: #991b1b;
 }

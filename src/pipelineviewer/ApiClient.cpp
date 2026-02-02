@@ -9,6 +9,7 @@ ApiClient::ApiClient(QObject* parent)
     : QObject(parent)
     , netMgr_(new QNetworkAccessManager(this))
     , baseUrl_("http://127.0.0.1:8080")
+    , apiToken_("default-dev-token")
     , entryPointString_("")
 {
 }
@@ -20,8 +21,13 @@ void ApiClient::setBaseUrl(const QString& url) {
     }
 }
 
+void ApiClient::setApiToken(const QString& token) {
+    apiToken_ = token;
+}
+
 void ApiClient::ping(std::function<void(bool)> callback) {
     QNetworkRequest req = QNetworkRequest(QUrl(baseUrl_ + entryPointString_ + "/info/cameras/list"));
+    req.setRawHeader("Authorization", QString("Bearer %1").arg(apiToken_).toUtf8());
     QNetworkReply* reply = netMgr_->get(req);
     
     connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
@@ -33,6 +39,7 @@ void ApiClient::ping(std::function<void(bool)> callback) {
 
 void ApiClient::listRecords(std::function<void(const QJsonArray&)> callback) {
     QNetworkRequest req = QNetworkRequest(QUrl(baseUrl_ + entryPointString_ + "/info/records/list"));
+    req.setRawHeader("Authorization", QString("Bearer %1").arg(apiToken_).toUtf8());
     QNetworkReply* reply = netMgr_->get(req);
     
     handleJsonReply(reply, [callback](const QJsonDocument& doc) {
@@ -47,6 +54,7 @@ void ApiClient::listRecords(std::function<void(const QJsonArray&)> callback) {
 void ApiClient::getRecord(const QString& recordUID, std::function<void(const QJsonObject&)> callback) {
     QString url = baseUrl_ + entryPointString_ + "/info/records/get/" + recordUID;
     QNetworkRequest req = QNetworkRequest(QUrl(url));
+    req.setRawHeader("Authorization", QString("Bearer %1").arg(apiToken_).toUtf8());
     QNetworkReply* reply = netMgr_->get(req);
     
     handleJsonReply(reply, [callback](const QJsonDocument& doc) {
@@ -60,6 +68,7 @@ void ApiClient::getRecord(const QString& recordUID, std::function<void(const QJs
 
 void ApiClient::listFiles(std::function<void(const QJsonArray&)> callback) {
     QNetworkRequest req = QNetworkRequest(QUrl(baseUrl_ + entryPointString_ + "/info/files/list"));
+    req.setRawHeader("Authorization", QString("Bearer %1").arg(apiToken_).toUtf8());
     QNetworkReply* reply = netMgr_->get(req);
     
     handleJsonReply(reply, [callback](const QJsonDocument& doc) {
@@ -74,6 +83,7 @@ void ApiClient::listFiles(std::function<void(const QJsonArray&)> callback) {
 void ApiClient::getFileInfo(const QString& fileUID, std::function<void(const QJsonObject&)> callback) {
     QString url = baseUrl_ + entryPointString_ + "/info/files/get/" + fileUID;
     QNetworkRequest req = QNetworkRequest(QUrl(url));
+    req.setRawHeader("Authorization", QString("Bearer %1").arg(apiToken_).toUtf8());
     QNetworkReply* reply = netMgr_->get(req);
     
     handleJsonReply(reply, [callback](const QJsonDocument& doc) {
@@ -91,6 +101,7 @@ void ApiClient::downloadFile(const QString& fileUID, const QString& destPath,
     // Download from /get/file/binary/{fileUID} (not under /api/v1)
     QString url = baseUrl_ + "/get/file/binary/" + fileUID;
     QNetworkRequest req = QNetworkRequest(QUrl(url));
+    req.setRawHeader("Authorization", QString("Bearer %1").arg(apiToken_).toUtf8());
     QNetworkReply* reply = netMgr_->get(req);
     
     // Progress tracking
@@ -154,6 +165,7 @@ void ApiClient::uploadPipeline(const QString& filePath, std::function<void(bool,
     
     QString url = baseUrl_ + "/add/pipeline";
     QNetworkRequest req = QNetworkRequest(QUrl(url));
+    req.setRawHeader("Authorization", QString("Bearer %1").arg(apiToken_).toUtf8());
     
     QNetworkReply* reply = netMgr_->post(req, multiPart);
     multiPart->setParent(reply); // Delete multiPart with reply

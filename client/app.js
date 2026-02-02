@@ -1,5 +1,16 @@
 // Live Bug Tracker 3000 - Main Application Logic
-const API_BASE_URL = 'http://127.0.0.1:8080';
+const API_BASE_URL = localStorage.getItem('api_base_url') || 'http://127.0.0.1:8080';
+
+// API Token - load from localStorage or use default for development
+const API_TOKEN = localStorage.getItem('api_token') || 'default-dev-token';
+
+// Helper to get headers with auth token
+function getAuthHeaders() {
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_TOKEN}`
+    };
+}
 
 class BugTrackerApp {
     constructor() {
@@ -57,7 +68,9 @@ class BugTrackerApp {
     async loadCamerasForStart() {
         const cameraSelect = document.getElementById('camera-select');
         try {
-            const response = await fetch(`${API_BASE_URL}/info/cameras/list`);
+            const response = await fetch(`${API_BASE_URL}/info/cameras/list`, {
+                headers: getAuthHeaders()
+            });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const cameras = await response.json();
@@ -92,7 +105,9 @@ class BugTrackerApp {
         calibrationSelect.innerHTML = '<option value="">Loading...</option>';
         
         try {
-            const response = await fetch(`${API_BASE_URL}/info/calibrations/list`);
+            const response = await fetch(`${API_BASE_URL}/info/calibrations/list`, {
+                headers: getAuthHeaders()
+            });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const allCalibrations = await response.json();
@@ -136,7 +151,9 @@ class BugTrackerApp {
 
         // Fetch calibration details
         try {
-            const response = await fetch(`${API_BASE_URL}/info/calibrations/get/${calibrationUID}`);
+            const response = await fetch(`${API_BASE_URL}/info/calibrations/get/${calibrationUID}`, {
+                headers: getAuthHeaders()
+            });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const calibration = await response.json();
@@ -158,7 +175,9 @@ class BugTrackerApp {
         pipelineSelect.innerHTML = '<option value="">Loading...</option>';
         
         try {
-            const response = await fetch(`${API_BASE_URL}/info/pipelines/list`);
+            const response = await fetch(`${API_BASE_URL}/info/pipelines/list`, {
+                headers: getAuthHeaders()
+            });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const pipelines = await response.json();
@@ -200,7 +219,9 @@ class BugTrackerApp {
 
         // Fetch pipeline details
         try {
-            const response = await fetch(`${API_BASE_URL}/info/pipelines/get/${pipelineUID}`);
+            const response = await fetch(`${API_BASE_URL}/info/pipelines/get/${pipelineUID}`, {
+                headers: getAuthHeaders()
+            });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const pipeline = await response.json();
@@ -286,7 +307,7 @@ class BugTrackerApp {
             
             const studyResponse = await fetch(`${API_BASE_URL}/add/study_meta_info`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(studyPayload)
             });
 
@@ -315,7 +336,7 @@ class BugTrackerApp {
             
             const recordResponse = await fetch(`${API_BASE_URL}/do/camera/record/start/${encodeURIComponent(camUID)}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(recordPayload)
             });
 
@@ -346,7 +367,9 @@ class BugTrackerApp {
     async checkApiStatus() {
         const statusEl = document.getElementById('api-status');
         try {
-            const response = await fetch(`${API_BASE_URL}/info/cameras/list`);
+            const response = await fetch(`${API_BASE_URL}/info/cameras/list`, {
+                headers: getAuthHeaders()
+            });
             if (response.ok) {
                 statusEl.textContent = 'Connected ✓';
                 statusEl.className = 'status-connected';
@@ -371,7 +394,9 @@ class BugTrackerApp {
         cameraListEl.innerHTML = '';
 
         try {
-            const response = await fetch(`${API_BASE_URL}/info/cameras/list`);
+            const response = await fetch(`${API_BASE_URL}/info/cameras/list`, {
+                headers: getAuthHeaders()
+            });
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -445,7 +470,7 @@ class BugTrackerApp {
         try {
             const response = await fetch(`${API_BASE_URL}/do/camera/test/${camUID}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: getAuthHeaders()
             });
             
             if (response.ok) {
@@ -509,7 +534,7 @@ class BugTrackerApp {
         try {
             const response = await fetch(`${API_BASE_URL}/do/camera/calibrate/${camUID}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify({ description: 'Web UI calibration' })
             });
             
@@ -535,7 +560,9 @@ class BugTrackerApp {
         if (recordsListEl) recordsListEl.innerHTML = '';
 
         try {
-            const response = await fetch(`${API_BASE_URL}/info/records/list`);
+            const response = await fetch(`${API_BASE_URL}/info/records/list`, {
+                headers: getAuthHeaders()
+            });
             
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -626,6 +653,11 @@ class BugTrackerApp {
                         ` : ''}
                     </div>
                     <div class="record-actions">
+                        ${(record.status === 'recording' || record.status === 'started') ? `
+                        <button class="btn-action btn-stop" onclick="app.stopRecording('${this.escapeHtml(record.recordUID)}')">
+                            ⏹️ Stop Recording
+                        </button>
+                        ` : ''}
                         <button class="btn-action" onclick="app.viewRecordDetails('${this.escapeHtml(record.recordUID)}')">
                             📊 View Details
                         </button>
@@ -646,7 +678,9 @@ class BugTrackerApp {
         if (filesListEl) filesListEl.innerHTML = '';
 
         try {
-            const response = await fetch(`${API_BASE_URL}/info/files/list`);
+            const response = await fetch(`${API_BASE_URL}/info/files/list`, {
+                headers: getAuthHeaders()
+            });
             
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -736,7 +770,9 @@ class BugTrackerApp {
 
     async viewFileDetails(fileUID) {
         try {
-            const response = await fetch(`${API_BASE_URL}/info/files/get/${fileUID}`);
+            const response = await fetch(`${API_BASE_URL}/info/files/get/${fileUID}`, {
+                headers: getAuthHeaders()
+            });
             if (response.ok) {
                 const file = await response.json();
                 alert(`File Details:\n${JSON.stringify(file, null, 2)}`);
@@ -754,7 +790,9 @@ class BugTrackerApp {
 
     async viewRecordDetails(recordUID) {
         try {
-            const response = await fetch(`${API_BASE_URL}/info/records/get/${recordUID}`);
+            const response = await fetch(`${API_BASE_URL}/info/records/get/${recordUID}`, {
+                headers: getAuthHeaders()
+            });
             if (response.ok) {
                 const record = await response.json();
                 alert(`Record Details:\n${JSON.stringify(record, null, 2)}`);
@@ -768,6 +806,33 @@ class BugTrackerApp {
 
     async downloadRecordFile(fileUID) {
         window.open(`${API_BASE_URL}/get/file/binary/${fileUID}`, '_blank');
+    }
+
+    async stopRecording(recordUID) {
+        if (!confirm(`Are you sure you want to stop recording ${recordUID}?\n\nThis will end the recording session immediately.`)) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/do/camera/record/stop/${encodeURIComponent(recordUID)}`, {
+                method: 'GET',
+                headers: getAuthHeaders()
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                alert(`✓ Recording stopped successfully!\n\nRecord UID: ${result.recordUID}\nStatus: ${result.status}`);
+                
+                // Refresh the records list
+                await this.loadRecords();
+            } else {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status} - ${errorText}`);
+            }
+        } catch (error) {
+            alert(`✗ Failed to stop recording: ${error.message}`);
+            console.error('Failed to stop recording:', error);
+        }
     }
 
     async stopRecord(recordUID) {

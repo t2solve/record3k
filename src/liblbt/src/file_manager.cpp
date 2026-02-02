@@ -69,6 +69,42 @@ void FileManager::registerRecording(const std::string& recordUID,
               << " (camera: " << cameraUID << ")" << std::endl;
 }
 
+bool FileManager::stopRecording(const std::string& recordUID) {
+    std::shared_ptr<RecordManager> manager;
+    
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto it = m_recordings.find(recordUID);
+        if (it == m_recordings.end()) {
+            std::cerr << "[FileManager] Recording not found: " << recordUID << std::endl;
+            return false;
+        }
+        
+        manager = it->second.manager;
+        if (!manager) {
+            std::cerr << "[FileManager] Recording manager already released: " << recordUID << std::endl;
+            return false;
+        }
+    }
+    
+    // Stop the recording (outside lock to avoid deadlock)
+    std::cout << "[FileManager] Stopping recording: " << recordUID << std::endl;
+    manager->stop();
+    std::cout << "[FileManager] Recording stopped: " << recordUID << std::endl;
+    
+    return true;
+}
+
+std::optional<std::string> FileManager::getRecordingState(const std::string& recordUID) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_recordings.find(recordUID);
+    if (it == m_recordings.end() || !it->second.manager) {
+        return std::nullopt;
+    }
+    
+    return it->second.manager->getStateString();
+}
+
 std::optional<std::filesystem::path> FileManager::packRecording(const std::string& recordUID) {
     std::shared_ptr<RecordManager> manager;
     std::string cameraUID;

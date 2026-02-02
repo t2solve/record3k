@@ -36,6 +36,7 @@ MainWindow::MainWindow(QWidget* parent)
     
     apiClient_ = std::make_unique<ApiClient>(this);
     apiClient_->setBaseUrl(settings_.value("api/url", "http://127.0.0.1:8080").toString());
+    apiClient_->setApiToken(settings_.value("api/token", "default-dev-token").toString());
     
     // Connect to error signal for verbose error messages
     connect(apiClient_.get(), &ApiClient::error, this, [this](const QString& msg) {
@@ -608,6 +609,7 @@ void MainWindow::showConfiguration() {
         loadConfiguration();
         ensureWorkDir();
         apiClient_->setBaseUrl(settings_.value("api/url", "http://127.0.0.1:8080").toString());
+        apiClient_->setApiToken(settings_.value("api/token", "default-dev-token").toString());
     }
 }
 

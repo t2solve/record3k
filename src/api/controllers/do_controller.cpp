@@ -597,8 +597,69 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
 }
 
 void DoController::cameraRecordStop(const HttpRequestPtr&, std::function<void (const HttpResponsePtr &)> && cb, const std::string &recordUID) {
-    RecordInfo r{recordUID, "cal-latest", false, "pipe-default", "study-unknown", "stopped", 12.3, "2025-11-07T12:03:00Z", "2025-11-07T12:03:12Z", "file-rec-placeholder"};
-    auto resp = HttpResponse::newHttpJsonResponse(r.toJson());
+    LOG_INFO << "[DoController::cameraRecordStop] Stopping recording: " << recordUID;
+    
+    // Check if recording exists in FileManager
+    auto stateOpt = lbt::FileManager::instance().getRecordingState(recordUID);
+    if (!stateOpt) {
+        LOG_WARN << "[DoController::cameraRecordStop] Recording not found: " << recordUID;
+        Json::Value err;
+        err["error"] = "Recording not found: " + recordUID;
+        auto resp = HttpResponse::newHttpJsonResponse(err);
+        resp->setStatusCode(k404NotFound);
+        cb(resp);
+        return;
+    }
+    
+    std::string currentState = *stateOpt;
+    LOG_INFO << "[DoController::cameraRecordStop] Current state: " << currentState;
+    
+    // Check if recording is still active
+    if (currentState != "RECORDING") {
+        LOG_WARN << "[DoController::cameraRecordStop] Recording not in RECORDING state: " << currentState;
+        Json::Value response;
+        response["recordUID"] = recordUID;
+        response["status"] = currentState;
+        response["message"] = "Recording already stopped or in state: " + currentState;
+        auto resp = HttpResponse::newHttpJsonResponse(response);
+        resp->setStatusCode(k200OK);
+        cb(resp);
+        return;
+    }
+    
+    // Stop the recording
+    if (!lbt::FileManager::instance().stopRecording(recordUID)) {
+        LOG_ERROR << "[DoController::cameraRecordStop] Failed to stop recording: " << recordUID;
+        Json::Value err;
+        err["error"] = "Failed to stop recording";
+        auto resp = HttpResponse::newHttpJsonResponse(err);
+        resp->setStatusCode(k500InternalServerError);
+        cb(resp);
+        return;
+    }
+    
+    // Get record info from InfoDataManager
+    auto recordInfo = infoDataManager().get("records", recordUID);
+    Json::Value response;
+    if (recordInfo) {
+        response = *recordInfo;
+        response["status"] = "stopped";
+        response["datetimeEnd"] = getCurrentTimeISO8601();
+        
+        // Update record info in InfoDataManager
+        Json::Value updates;
+        updates["status"] = "stopped";
+        updates["datetimeEnd"] = getCurrentTimeISO8601();
+        infoDataManager().updateRecordInfo(recordUID, updates);
+    } else {
+        // Fallback if record info not found
+        response["recordUID"] = recordUID;
+        response["status"] = "stopped";
+        response["datetimeEnd"] = getCurrentTimeISO8601();
+    }
+    
+    LOG_INFO << "[DoController::cameraRecordStop] Recording stopped successfully: " << recordUID;
+    auto resp = HttpResponse::newHttpJsonResponse(response);
     resp->setStatusCode(k200OK);
     cb(resp);
 }

@@ -221,11 +221,23 @@ int main(int argc, char* argv[])
     LOG_INFO << "VimbaX not enabled in this build";
     #endif
     
+    // Load API token from environment variable
+    const char* envToken = std::getenv("API_TOKEN");
+    std::string API_TOKEN = envToken ? envToken : "foobartest42";
+    
+    if (envToken) {
+        LOG_INFO << "API_TOKEN loaded from environment (length: " << API_TOKEN.length() << " chars)";
+    } else {
+        LOG_WARN << "API_TOKEN not set in environment - using default development token";
+        LOG_WARN << "Set API_TOKEN environment variable for production!";
+        LOG_WARN << "Using default token is insecure and should only be done in development!";
+    }
+    
     // Enable CORS for browser access from different origins
-    drogon::app().registerPreHandlingAdvice([](const drogon::HttpRequestPtr &req, 
+    drogon::app().registerPreHandlingAdvice([API_TOKEN](const drogon::HttpRequestPtr &req, 
                                                drogon::AdviceCallback &&acb, 
                                                drogon::AdviceChainCallback &&accb) {
-        // Handle OPTIONS preflight requests
+        // Handle OPTIONS preflight requests (no auth required)
         if (req->method() == drogon::HttpMethod::Options) {
             LOG_DEBUG << "Handling OPTIONS preflight request for: " << req->path();
             auto resp = drogon::HttpResponse::newHttpResponse();
@@ -237,7 +249,31 @@ int main(int argc, char* argv[])
             acb(resp);
             return;
         }
-        // Continue with normal request processing
+        
+        // Check API token for all other requests
+        std::string authHeader = req->getHeader("Authorization");
+        std::string expectedAuth = "Bearer " + API_TOKEN;
+        
+        if (authHeader != expectedAuth) {
+            LOG_WARN << "Unauthorized request to " << req->path() << " from " << req->peerAddr().toIp();
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(drogon::k401Unauthorized);
+            resp->addHeader("Access-Control-Allow-Origin", "*");
+            resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+            
+            Json::Value error;
+            error["error"] = "Unauthorized - Invalid or missing API token";
+            error["message"] = "Please provide a valid Bearer token in the Authorization header";
+            
+            Json::StreamWriterBuilder builder;
+            builder["indentation"] = "";
+            resp->setBody(Json::writeString(builder, error));
+            
+            acb(resp);
+            return;
+        }
+        
+        // Token valid - continue with normal request processing
         accb();
     });
     

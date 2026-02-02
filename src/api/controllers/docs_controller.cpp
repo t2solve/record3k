@@ -11,8 +11,23 @@ Json::Value buildSpec() {
     root["info"]["version"] = "1.0.0";
     root["info"]["description"] = "Manual OpenAPI document (fallback until native swagger available)";
 
-    // Basic component schemas (very simplified)
+    // Security scheme for Bearer token
     Json::Value components(Json::objectValue);
+    Json::Value securitySchemes(Json::objectValue);
+    securitySchemes["bearerAuth"]["type"] = "http";
+    securitySchemes["bearerAuth"]["scheme"] = "bearer";
+    securitySchemes["bearerAuth"]["bearerFormat"] = "JWT";
+    securitySchemes["bearerAuth"]["description"] = "Enter your API token (e.g., 'default-dev-token' for development)";
+    components["securitySchemes"] = securitySchemes;
+
+    // Apply security globally to all endpoints
+    Json::Value security(Json::arrayValue);
+    Json::Value securityItem(Json::objectValue);
+    securityItem["bearerAuth"] = Json::Value(Json::arrayValue);
+    security.append(securityItem);
+    root["security"] = security;
+
+    // Basic component schemas (very simplified)
     Json::Value schemas(Json::objectValue);
     auto simpleObj = [](std::vector<std::pair<std::string,std::string>> fields){
         Json::Value s(Json::objectValue);
@@ -118,7 +133,7 @@ Json::Value buildSpec() {
     // Do endpoints
     addPost("/do/camera/calibrate/{camUID}","Trigger calibration","CalibrationInfo",202);
     addPost("/do/camera/record/start/{camUID}","Start recording (supports pipeLineTest:bool for debug mode)","RecordInfo",201);
-    addPost("/do/camera/record/{recordUID}/stop","Stop recording","RecordInfo",200);
+    addGet("/do/camera/record/stop/{recordUID}","Stop an active recording","RecordInfo");
     addPost("/do/camera/test/{camUID}","Test camera connectivity","",200);
 
     root["paths"] = paths;
@@ -128,13 +143,13 @@ Json::Value buildSpec() {
 } // namespace
 
 static std::string swaggerHtml(const std::string &specUrl) {
-    // Simple embedded Swagger UI via CDN
+    // Simple embedded Swagger UI via CDN with authorization support
     return std::string(R"(<!DOCTYPE html><html><head><title>Swagger UI</title>
     <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
     </head><body><div id="swagger-ui"></div>
     <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
     <script>window.onload = () => { window.ui = SwaggerUIBundle({ url: ')")
-        + specUrl + R"(', dom_id: '#swagger-ui'}); };</script></body></html>)";
+        + specUrl + R"(', dom_id: '#swagger-ui', persistAuthorization: true}); };</script></body></html>)";
 }
 
 void DocsController::openapi(const drogon::HttpRequestPtr& /*req*/, std::function<void (const drogon::HttpResponsePtr &)> &&callback)

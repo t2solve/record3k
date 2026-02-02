@@ -28,6 +28,12 @@ public:
     QString baseUrl() const { return baseUrl_; }
     
     /**
+     * Set the API authentication token
+     */
+    void setApiToken(const QString& token);
+    QString apiToken() const { return apiToken_; }
+    
+    /**
      * Test API connection
      * @param callback Called with true if connection successful, false otherwise
      */
@@ -83,6 +89,7 @@ signals:
 private:
     QNetworkAccessManager* netMgr_;
     QString baseUrl_;
+    QString apiToken_;
     QString entryPointString_;
     
     void handleJsonReply(QNetworkReply* reply, std::function<void(const QJsonDocument&)> callback);

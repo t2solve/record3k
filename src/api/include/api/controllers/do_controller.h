@@ -7,7 +7,7 @@ public:
     METHOD_LIST_BEGIN
     ADD_METHOD_TO(DoController::cameraCalibrate, "/do/camera/calibrate/{1}", drogon::Post);
     ADD_METHOD_TO(DoController::recordStart, "/do/camera/record/start/{1}", drogon::Post);
-    ADD_METHOD_TO(DoController::cameraRecordStop, "/do/camera/record/{1}/stop", drogon::Post);
+    ADD_METHOD_TO(DoController::cameraRecordStop, "/do/camera/record/stop/{1}", drogon::Get);
     ADD_METHOD_TO(DoController::cameraTest, "/do/camera/test/{1}", drogon::Post);
     METHOD_LIST_END
 

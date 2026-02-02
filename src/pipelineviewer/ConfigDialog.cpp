@@ -20,6 +20,12 @@ ConfigDialog::ConfigDialog(QWidget* parent)
     apiUrlEdit_->setPlaceholderText("http://127.0.0.1:8080");
     formLayout->addRow("API Server URL:", apiUrlEdit_);
     
+    // API Token
+    apiTokenEdit_ = new QLineEdit;
+    apiTokenEdit_->setPlaceholderText("default-dev-token");
+    apiTokenEdit_->setEchoMode(QLineEdit::Password);
+    formLayout->addRow("API Token:", apiTokenEdit_);
+    
     // Working directory
     auto* workDirLayout = new QHBoxLayout;
     workDirEdit_ = new QLineEdit;
@@ -54,6 +60,11 @@ QString ConfigDialog::apiUrl() const {
     return url.isEmpty() ? "http://127.0.0.1:8080" : url;
 }
 
+QString ConfigDialog::apiToken() const {
+    QString token = apiTokenEdit_->text().trimmed();
+    return token.isEmpty() ? "default-dev-token" : token;
+}
+
 QString ConfigDialog::workDir() const {
     QString dir = workDirEdit_->text().trimmed();
     return dir.isEmpty() ? "/tmp/pipelineviewer" : dir;
@@ -63,17 +74,23 @@ void ConfigDialog::setApiUrl(const QString& url) {
     apiUrlEdit_->setText(url);
 }
 
+void ConfigDialog::setApiToken(const QString& token) {
+    apiTokenEdit_->setText(token);
+}
+
 void ConfigDialog::setWorkDir(const QString& dir) {
     workDirEdit_->setText(dir);
 }
 
 void ConfigDialog::loadSettings() {
     apiUrlEdit_->setText(settings_.value("api/url", "http://127.0.0.1:8080").toString());
+    apiTokenEdit_->setText(settings_.value("api/token", "default-dev-token").toString());
     workDirEdit_->setText(settings_.value("working/directory", "/tmp/pipelineviewer").toString());
 }
 
 void ConfigDialog::saveSettings() {
     settings_.setValue("api/url", apiUrl());
+    settings_.setValue("api/token", apiToken());
     settings_.setValue("working/directory", workDir());
     settings_.sync();
 }

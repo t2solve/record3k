@@ -80,6 +80,20 @@ public:
                           const std::string& cameraUID = "");
     
     /**
+     * Stop a recording by recordUID
+     * @param recordUID Unique identifier for the recording
+     * @return true if recording was found and stopped successfully
+     */
+    bool stopRecording(const std::string& recordUID);
+    
+    /**
+     * Get recording state by recordUID
+     * @param recordUID Unique identifier for the recording
+     * @return Optional state string, or nullopt if not found
+     */
+    std::optional<std::string> getRecordingState(const std::string& recordUID) const;
+    
+    /**
      * Manually trigger packing of a recording
      * @param recordUID Unique identifier for the recording
      * @return Optional path to the packed tar.gz file, or nullopt on failure
