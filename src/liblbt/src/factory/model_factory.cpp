@@ -56,7 +56,7 @@ std::string ModelFactory::normalizeMac(std::string s) {
 }
 
 // CameraInfo
-StatusOr<api::CameraInfo> ModelFactory::makeCameraInfo(std::string camUID, std::string macAddress, std::optional<std::string> devicePath, std::optional<std::string> description, std::string cameraType, std::string status) {
+StatusOr<api::CameraInfo> ModelFactory::makeCameraInfo(std::string camUID, std::string macAddress, std::optional<std::string> serialNumber, std::optional<std::string> devicePath, std::optional<std::string> description, std::string cameraType, std::string status) {
     camUID = trim(camUID);
     macAddress = trim(macAddress);
     status = trim(status);
@@ -66,9 +66,13 @@ StatusOr<api::CameraInfo> ModelFactory::makeCameraInfo(std::string camUID, std::
     
     // Validate based on camera type
     if (cameraType == "TYPE_CAM_VIMBA") {
-        // VimbaX cameras require MAC address
-        if (!isValidMac(macAddress)) return {"Invalid MAC address for TYPE_CAM_VIMBA"};
-        macAddress = normalizeMac(macAddress);
+        // VimbaX cameras require MAC address or serial number
+        if (!isValidMac(macAddress) && (!serialNumber || serialNumber->empty())) {
+            return {"Either MAC address or serial number required for TYPE_CAM_VIMBA"};
+        }
+        if (isValidMac(macAddress)) {
+            macAddress = normalizeMac(macAddress);
+        }
     } else if (cameraType == "TYPE_CAM_USB") {
         // USB cameras require device path
         if (!devicePath || devicePath->empty()) return {"devicePath required for TYPE_CAM_USB"};
@@ -80,7 +84,7 @@ StatusOr<api::CameraInfo> ModelFactory::makeCameraInfo(std::string camUID, std::
     }
     
     if (!nonEmpty(status)) status = "unknown";
-    api::CameraInfo c{camUID, macAddress, devicePath, description, status, "", cameraType}; // datetimeLastSeen may be filled by manager
+    api::CameraInfo c{camUID, macAddress, serialNumber, devicePath, description, status, "", cameraType}; // datetimeLastSeen may be filled by manager
     return c;
 }
 StatusOr<api::CameraInfo> ModelFactory::fromJsonCamera(const Json::Value& j) {
@@ -100,6 +104,7 @@ StatusOr<api::CameraInfo> ModelFactory::fromJsonCamera(const Json::Value& j) {
     auto r = makeCameraInfo(
         j.get("camUID","" ).asString(),
         j.get("macAddress","" ).asString(),
+        j.isMember("serialNumber") ? std::optional<std::string>(j["serialNumber"].asString()) : std::nullopt,
         j.isMember("devicePath") ? std::optional<std::string>(j["devicePath"].asString()) : std::nullopt,
         j.isMember("description") ? std::optional<std::string>(j["description"].asString()) : std::nullopt,
         camType,

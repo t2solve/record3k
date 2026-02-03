@@ -39,6 +39,7 @@ public:
     static StatusOr<api::CameraInfo> makeCameraInfo(
         std::string camUID,
         std::string macAddress,
+        std::optional<std::string> serialNumber,
         std::optional<std::string> devicePath,
         std::optional<std::string> description,
         std::string cameraType,

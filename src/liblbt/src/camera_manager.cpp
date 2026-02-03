@@ -153,14 +153,34 @@ CameraTestResult CameraManager::testCamera(const api::CameraInfo& cam, const std
         std::cout << "[CameraManager] ======================================" << std::endl;
         std::cout << "[CameraManager] Attempting to test camera:" << std::endl;
         std::cout << "[CameraManager]   - camUID: " << cam.camUID << std::endl;
+        std::cout << "[CameraManager]   - Serial: " << (cam.serialNumber ? *cam.serialNumber : "N/A") << std::endl;
         std::cout << "[CameraManager]   - MAC address: " << cam.macAddress << std::endl;
         std::cout << "[CameraManager]   - Description: " << (cam.description ? *cam.description : "N/A") << std::endl;
         std::cout << "[CameraManager] ======================================" << std::endl;
-        std::cout << "[CameraManager] NOTE: camUID is not the VimbaX serial number!" << std::endl;
-        std::cout << "[CameraManager] Will try matching by MAC address, then fallback to any camera" << std::endl;
+        std::cout << "[CameraManager] Will try matching by serial number first, then MAC address" << std::endl;
         
         try {
-            // Try by MAC address first (most reliable for GigE cameras)
+            // Try by serial number first (most reliable)
+            if (cam.serialNumber && !cam.serialNumber->empty()) {
+                std::cout << "[CameraManager] Attempting to open camera by serial number: " << *cam.serialNumber << std::endl;
+                VimbaXFrameSource src_by_serial(*cam.serialNumber, "", false);
+                std::cout << "[CameraManager] VimbaXFrameSource created, checking if ready..." << std::endl;
+                if (src_by_serial.isReady()) {
+                    std::cout << "[CameraManager] Camera ready via serial, acquiring frame..." << std::endl;
+                    auto frame = src_by_serial.nextFrame();
+                    if (frame != nullptr) {
+                        std::cout << "[CameraManager] SUCCESS: Got frame via serial number" << std::endl;
+                        return CameraTestResult::SUCCESS;
+                    } else {
+                        std::cerr << "[CameraManager] ERROR: Camera ready but no frame via serial" << std::endl;
+                        return CameraTestResult::ERROR_NO_FRAME;
+                    }
+                } else {
+                    std::cerr << "[CameraManager] ERROR: Camera not ready via serial number" << std::endl;
+                }
+            }
+            
+            // Fallback: Try by MAC address (for GigE cameras)
             if (!cam.macAddress.empty() && cam.macAddress != "N/A") {
                 std::cout << "[CameraManager] Attempting to open camera by MAC address: " << cam.macAddress << std::endl;
                 VimbaXFrameSource src_by_mac("", cam.macAddress, false);
@@ -173,33 +193,16 @@ CameraTestResult CameraManager::testCamera(const api::CameraInfo& cam, const std
                         return CameraTestResult::SUCCESS;
                     } else {
                         std::cerr << "[CameraManager] ERROR: Camera ready but no frame via MAC" << std::endl;
+                        return CameraTestResult::ERROR_NO_FRAME;
                     }
                 } else {
-                    std::cout << "[CameraManager] Camera not ready via MAC address" << std::endl;
+                    std::cerr << "[CameraManager] ERROR: Camera not ready via MAC address" << std::endl;
                 }
-            } else {
-                std::cout << "[CameraManager] No valid MAC address, skipping MAC-based lookup" << std::endl;
             }
             
-            // Fallback: try with empty strings (will use first available camera)
-            std::cout << "[CameraManager] Attempting to open first available camera (empty serial/MAC)" << std::endl;
-            VimbaXFrameSource src_any("", "", false);
-            std::cout << "[CameraManager] VimbaXFrameSource created, checking if ready..." << std::endl;
-            if (!src_any.isReady()) {
-                std::cerr << "[CameraManager] ERROR: No camera available" << std::endl;
-                return CameraTestResult::ERROR_NOT_READY;
-            }
-            
-            std::cout << "[CameraManager] Camera ready, acquiring frame..." << std::endl;
-            auto frame = src_any.nextFrame();
-            std::cout << "[CameraManager] nextFrame() returned" << std::endl;
-            if (frame == nullptr) {
-                std::cerr << "[CameraManager] ERROR: Camera ready but no frame" << std::endl;
-                return CameraTestResult::ERROR_NO_FRAME;
-            }
-            
-            std::cout << "[CameraManager] SUCCESS: Got frame from camera" << std::endl;
-            return CameraTestResult::SUCCESS;
+            std::cerr << "[CameraManager] ERROR: No valid serial or MAC address provided for VimbaX camera" << std::endl;
+            std::cerr << "[CameraManager] Either serialNumber or macAddress is required to identify specific VimbaX cameras" << std::endl;
+            return CameraTestResult::ERROR_NOT_FOUND;
         } catch (const std::exception& e) {
             std::cerr << "[CameraManager] EXCEPTION in VimbaX test: " << e.what() << std::endl;
             return CameraTestResult::ERROR_EXCEPTION;

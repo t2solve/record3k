@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Live Bug Tracker 3000</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🐛 Live Bug Tracker 3000</h1>
+            <p class="subtitle">Settings & Configuration</p>
+        </header>
+
+        <nav class="main-nav">
+            <a href="index.html" class="nav-link">📷 Cameras</a>
+            <a href="records.html" class="nav-link">📹 Records</a>
+            <a href="start.html" class="nav-link">▶️ Start Recording</a>
+            <a href="settings.html" class="nav-link active">⚙️ Settings</a>
+            <a href="http://127.0.0.1:8080/swagger" class="nav-link" target="_blank">📚 API Docs</a>
+        </nav>
+
+        <main>
+            <section class="settings-section">
+                <div class="section-header">
+                    <h2>⚙️ API Configuration</h2>
+                </div>
+                
+                <form id="settings-form" class="settings-form">
+                    <div class="form-group">
+                        <label for="api-base-url">API Base URL:</label>
+                        <input type="url" 
+                               id="api-base-url" 
+                               class="form-input" 
+                               placeholder="http://127.0.0.1:8080"
+                               required>
+                        <small class="form-help">The base URL of the record3k API server (without trailing slash)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="api-token">API Token:</label>
+                        <div class="token-input-group">
+                            <input type="password" 
+                                   id="api-token" 
+                                   class="form-input" 
+                                   placeholder="default-dev-token"
+                                   required>
+                            <button type="button" id="toggle-token-visibility" class="btn-icon" title="Show/Hide Token">
+                                👁️
+                            </button>
+                        </div>
+                        <small class="form-help">Bearer token for API authentication (contact admin for production token)</small>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary">💾 Save Settings</button>
+                        <button type="button" id="reset-btn" class="btn-secondary">🔄 Reset to Defaults</button>
+                        <button type="button" id="test-connection-btn" class="btn-action">🧪 Test Connection</button>
+                    </div>
+
+                    <div id="settings-status" class="form-status" style="display: none;"></div>
+                </form>
+
+                <div class="settings-info">
+                    <h3>ℹ️ Information</h3>
+                    <ul>
+                        <li><strong>API Base URL:</strong> The HTTP endpoint where the record3k API server is running</li>
+                        <li><strong>API Token:</strong> Authentication token required for all API requests</li>
+                        <li><strong>Storage:</strong> Settings are saved in your browser's localStorage</li>
+                        <li><strong>Default Values:</strong>
+                            <ul>
+                                <li>API Base URL: <code>http://127.0.0.1:8080</code></li>
+                                <li>API Token: <code>default-dev-token</code></li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Connected to API: <span id="api-status" class="status-disconnected">Checking...</span></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Settings page specific code
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('settings-form');
+            const apiBaseUrlInput = document.getElementById('api-base-url');
+            const apiTokenInput = document.getElementById('api-token');
+            const toggleTokenBtn = document.getElementById('toggle-token-visibility');
+            const resetBtn = document.getElementById('reset-btn');
+            const testConnectionBtn = document.getElementById('test-connection-btn');
+            const statusEl = document.getElementById('settings-status');
+
+            // Load current settings
+            function loadSettings() {
+                apiBaseUrlInput.value = localStorage.getItem('api_base_url') || 'http://127.0.0.1:8080';
+                apiTokenInput.value = localStorage.getItem('api_token') || 'default-dev-token';
+            }
+
+            // Save settings
+            function saveSettings() {
+                const baseUrl = apiBaseUrlInput.value.trim().replace(/\/$/, ''); // Remove trailing slash
+                const token = apiTokenInput.value.trim();
+
+                localStorage.setItem('api_base_url', baseUrl);
+                localStorage.setItem('api_token', token);
+
+                // Update the app's global variables
+                window.location.reload(); // Reload to apply new settings
+            }
+
+            // Show status message
+            function showStatus(message, type) {
+                statusEl.textContent = message;
+                statusEl.className = `form-status status-${type}`;
+                statusEl.style.display = 'block';
+
+                if (type === 'success' || type === 'error') {
+                    setTimeout(() => {
+                        statusEl.style.display = 'none';
+                    }, 5000);
+                }
+            }
+
+            // Toggle token visibility
+            toggleTokenBtn.addEventListener('click', () => {
+                if (apiTokenInput.type === 'password') {
+                    apiTokenInput.type = 'text';
+                    toggleTokenBtn.textContent = '🙈';
+                    toggleTokenBtn.title = 'Hide Token';
+                } else {
+                    apiTokenInput.type = 'password';
+                    toggleTokenBtn.textContent = '👁️';
+                    toggleTokenBtn.title = 'Show Token';
+                }
+            });
+
+            // Form submission
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                saveSettings();
+                showStatus('✓ Settings saved! Reloading page...', 'success');
+            });
+
+            // Reset to defaults
+            resetBtn.addEventListener('click', () => {
+                if (confirm('Reset all settings to default values?')) {
+                    localStorage.removeItem('api_base_url');
+                    localStorage.removeItem('api_token');
+                    loadSettings();
+                    showStatus('✓ Settings reset to defaults', 'info');
+                }
+            });
+
+            // Test connection
+            testConnectionBtn.addEventListener('click', async () => {
+                showStatus('Testing connection...', 'info');
+                
+                const baseUrl = apiBaseUrlInput.value.trim().replace(/\/$/, '');
+                const token = apiTokenInput.value.trim();
+
+                try {
+                    const response = await fetch(`${baseUrl}/info/cameras/list`, {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        showStatus('✓ Connection successful!', 'success');
+                    } else if (response.status === 401) {
+                        showStatus('✗ Authentication failed: Invalid API token', 'error');
+                    } else {
+                        showStatus(`✗ Connection failed: HTTP ${response.status}`, 'error');
+                    }
+                } catch (error) {
+                    showStatus(`✗ Connection failed: ${error.message}`, 'error');
+                }
+            });
+
+            // Initialize
+            loadSettings();
+        });
+    </script>
+</body>
+</html>

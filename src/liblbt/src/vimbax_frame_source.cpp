@@ -130,11 +130,27 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
     // Strategy 3: Try match by interface/MAC only
     if (!camera_ && !interfaceIdOrMac.empty()) {
         std::cout << "[VimbaXFrameSource] Strategy 3: Trying match by interface/MAC only..." << std::endl;
+        
+        // Prepare MAC address without separators for Camera ID matching
+        // e.g., "00:0A:47:37:27:77" -> "000A47372777"
+        std::string macNoSeparators;
+        for (char c : interfaceIdOrMac) {
+            if (c != ':' && c != '-') {
+                macNoSeparators += std::toupper(c);
+            }
+        }
+        std::string expectedCameraId = "DEV_" + macNoSeparators;
+        std::cout << "[VimbaXFrameSource]   Expected Camera ID from MAC: " << expectedCameraId << std::endl;
+        
         for (auto& cam : cameras) {
-            std::string iid;
+            std::string iid, camId;
             cam->GetInterfaceID(iid);
+            cam->GetID(camId);
             
-            // Also check MAC address
+            // Check Camera ID (contains MAC without separators)
+            bool matchCameraId = (camId == expectedCameraId);
+            
+            // Also check MAC address from feature (if available)
             FeaturePtr macFeature;
             std::string macAddr;
             if (cam->GetFeatureByName("GevDeviceMACAddress", macFeature) == VmbErrorSuccess) {
@@ -155,9 +171,11 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
             bool matchInterface = iid.find(interfaceIdOrMac) != std::string::npos;
             bool matchMAC = !macAddr.empty() && macAddr == interfaceIdOrMac;
             
-            if (matchInterface || matchMAC) {
+            if (matchCameraId || matchInterface || matchMAC) {
                 camera_ = cam;
-                if (matchInterface) {
+                if (matchCameraId) {
+                    std::cout << "[VimbaXFrameSource] ✓ Found match by Camera ID: " << camId << std::endl;
+                } else if (matchInterface) {
                     std::cout << "[VimbaXFrameSource] ✓ Found match by interface: " << iid << std::endl;
                 } else {
                     std::cout << "[VimbaXFrameSource] ✓ Found match by MAC: " << macAddr << std::endl;
@@ -167,16 +185,26 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
         }
     }
     
-    // Strategy 4: Use first available camera
-    if (!camera_) {
-        std::cout << "[VimbaXFrameSource] Strategy 4: Using first available camera..." << std::endl;
-        camera_ = cameras.front();
-        std::string camId, camSerial;
-        camera_->GetID(camId);
-        camera_->GetSerialNumber(camSerial);
-        std::cout << "[VimbaXFrameSource] ✓ Using first camera: " << camId << " (S/N: " << camSerial << ")" << std::endl;
-        if (debug_) qWarning() << "[VimbaXFrameSource] No match found, using first available camera";
-    }
+    // // Strategy 4: Use first available camera (only if no specific criteria were given)
+    // if (!camera_) {
+    //     // Only use first available if BOTH serial and interface/MAC are empty
+    //     // Otherwise, it means we failed to find the specific camera requested
+    //     if (cameraSerial.empty() && interfaceIdOrMac.empty()) {
+    //         std::cout << "[VimbaXFrameSource] Strategy 4: Using first available camera..." << std::endl;
+    //         camera_ = cameras.front();
+    //         std::string camId, camSerial;
+    //         camera_->GetID(camId);
+    //         camera_->GetSerialNumber(camSerial);
+    //         std::cout << "[VimbaXFrameSource] ✓ Using first camera: " << camId << " (S/N: " << camSerial << ")" << std::endl;
+    //         if (debug_) qWarning() << "[VimbaXFrameSource] No match found, using first available camera";
+    //     } else {
+    //         std::cerr << "[VimbaXFrameSource] ✗ Failed to find camera matching criteria" << std::endl;
+    //         std::cerr << "[VimbaXFrameSource]   Requested serial: '" << cameraSerial << "'" << std::endl;
+    //         std::cerr << "[VimbaXFrameSource]   Requested interface/MAC: '" << interfaceIdOrMac << "'" << std::endl;
+    //         std::cerr << "[VimbaXFrameSource]   Will NOT fallback to first available camera" << std::endl;
+    //         return false;  // Return false instead of using first available camera
+    //     }
+    // }
 
     // Open
     std::cout << "[VimbaXFrameSource] Opening camera..." << std::endl;
