@@ -342,29 +342,20 @@ void RecordManager::recordingLoop() {
                 std::cout << "[RecordManager] " << progressMsg.str() << std::endl;
                 logToFile(progressMsg.str());
             }
-
-            //do write a trajectory file
-            {
-                std::ofstream trajFile((m_recordDir / "mass_center_trajectory.csv").string());
-                trajFile << "timestamp_ns;world_x_mm;world_y_mm;"
-                         << "mass_center_x_px;mass_center_y_px"
-                         << "\n";
-                for (size_t i = 0; i < mass_center_list.size(); ++i) {
-                    const auto& p = mass_center_list[i];
-                    const auto& p2 = world_center_list[i];
-                    trajFile << frame_timestamps_list[i] << ";"
-                             << std::fixed << std::setprecision(2)
-                             << p2.x << ";" << p2.y << ";"
-                             << std::setprecision(1)
-                             << p.x << ";" << p.y
-                             << "\n";
-                }
-                trajFile.close();   
-            }
       
             // Sleep to maintain target FPS
             auto processingTime = std::chrono::steady_clock::now() - now;
             auto sleepTime = interval - std::chrono::duration_cast<std::chrono::milliseconds>(processingTime);
+            
+            // Log timing details periodically to verify FPS control
+            if (frameCounter % 100 == 0) {
+                double procMs = std::chrono::duration<double, std::milli>(processingTime).count();
+                double sleepMs = sleepTime.count();
+                std::stringstream timingMsg;
+                timingMsg << "Timing: Processing=" << std::fixed << std::setprecision(2) << procMs 
+                         << "ms, Sleep=" << sleepMs << "ms, Target=" << interval.count() << "ms";
+                logToFile(timingMsg.str());
+            }
             
             if (sleepTime.count() > 0) {
                 std::this_thread::sleep_for(sleepTime);
@@ -399,6 +390,27 @@ void RecordManager::recordingLoop() {
             std::cout << "[RecordManager] Recording completed successfully: " 
                       << frameCounter << " frames recorded" << std::endl;
             logToFile(finalMsg.str());
+            
+            // Write trajectory file once at the end
+            if (!mass_center_list.empty()) {
+                std::ofstream trajFile((m_recordDir / "mass_center_trajectory.csv").string());
+                trajFile << "timestamp_ns;world_x_mm;world_y_mm;"
+                         << "mass_center_x_px;mass_center_y_px"
+                         << "\n";
+                for (size_t i = 0; i < mass_center_list.size(); ++i) {
+                    const auto& p = mass_center_list[i];
+                    const auto& p2 = world_center_list[i];
+                    trajFile << frame_timestamps_list[i] << ";"
+                             << std::fixed << std::setprecision(2)
+                             << p2.x << ";" << p2.y << ";"
+                             << std::setprecision(1)
+                             << p.x << ";" << p.y
+                             << "\n";
+                }
+                trajFile.close();
+                std::cout << "[RecordManager] Trajectory file written with " << mass_center_list.size() << " points" << std::endl;
+                logToFile("Trajectory file written with " + std::to_string(mass_center_list.size()) + " points");
+            }
             
             // Write ResultLogger summary
             if (m_resultLogger) {

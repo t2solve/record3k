@@ -17,7 +17,10 @@ ENV TZ=Etc/UTC
 #    rm -rf /tmp/drogon && ldconfig
 
 # Define the latest stable version of OpenCV
-ENV LATEST_VERSION=4.11.0
+ENV LATEST_VERSION=4.13.0
+
+# Print the latest version for verification
+RUN echo "LATEST_VERSION=$LATEST_VERSION"
 
 # Set the working directory
 WORKDIR /app
@@ -38,11 +41,18 @@ ENV CCACHE_DIR=/ccache
 RUN mkdir -p $CCACHE_DIR && chmod -R 777 $CCACHE_DIR
 
 # checkout the latest stable version
-RUN cd opencv && git checkout $LATEST_VERSION && cd .. && \
-    cd opencv_contrib && git checkout $LATEST_VERSION
+# friendly 
+# RUN cd opencv && git checkout $LATEST_VERSION && cd .. && \
+#    cd opencv_contrib && git checkout $LATEST_VERSION
+# hard
+RUN cd opencv && git reset --hard && git checkout $LATEST_VERSION && cd .. && \
+  cd opencv_contrib && git reset --hard && git checkout $LATEST_VERSION
+
 
 # do need to checkout one file for bugfix latest  https://github.com/opencv/opencv/issues/27289
-RUN cd opencv && git checkout - modules/core/include/opencv2/core/private.cuda.hpp
+# Fix for nppGetStreamContext compatibility issue with CUDA 12.x
+#RUN cd opencv && git fetch origin && \
+#    git checkout origin/4.x -- modules/core/include/opencv2/core/private.cuda.hpp 
 
 # configure OpenCV with CUDA support
 RUN mkdir -p opencv/build && cd opencv/build && \

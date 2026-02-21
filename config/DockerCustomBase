@@ -13,10 +13,8 @@ FROM docker.io/nvidia/cuda:12.9.0-cudnn-devel-ubuntu24.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-# Fix apt permissions for Podman - create directories and set proper ownership
-RUN mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial && \
-    chmod 755 /var/lib/apt/lists/partial /var/cache/apt/archives/partial && \
-    chown _apt:root /var/lib/apt/lists/partial /var/cache/apt/archives/partial
+# Fix apt permissions for Podman - disable apt sandboxing to avoid _apt user issues
+RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/90sandbox
 
 # replace with fast mirror
 #RUN sed -i 's|http://archive.ubuntu.com|https://ftp.uni-stuttgart.de/ubuntu/|g' /etc/apt/sources.list 
