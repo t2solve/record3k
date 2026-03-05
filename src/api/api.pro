@@ -11,7 +11,7 @@ DEFINES += API_ENABLED
 
 # Set log level from parent project or environment
 !isEmpty(LOG_LEVEL) {
-    DEFINES += LOG_LEVEL_$$LOG_LEVEL
+    DEFINES += APP_LOG_LEVEL_$$LOG_LEVEL
     message("API log level: $$LOG_LEVEL")
 }
 

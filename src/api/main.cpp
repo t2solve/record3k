@@ -62,23 +62,23 @@ int main(int argc, char* argv[])
     std::cout << "[api] API_ENABLED not defined; rebuild with CONFIG+=api to start server." << std::endl;
     return 0;
 #else
-    // Set log level based on build configuration (from LOG_LEVEL define)
-#if defined(LOG_LEVEL_TRACE)
+    // Set log level based on build configuration (from APP_LOG_LEVEL define)
+#if defined(APP_LOG_LEVEL_TRACE)
     trantor::Logger::setLogLevel(trantor::Logger::kTrace);
     LOG_INFO << "Log level: TRACE";
-#elif defined(LOG_LEVEL_DEBUG)
+#elif defined(APP_LOG_LEVEL_DEBUG)
     trantor::Logger::setLogLevel(trantor::Logger::kDebug);
     LOG_INFO << "Log level: DEBUG";
-#elif defined(LOG_LEVEL_INFO)
+#elif defined(APP_LOG_LEVEL_INFO)
     trantor::Logger::setLogLevel(trantor::Logger::kInfo);
     LOG_INFO << "Log level: INFO";
-#elif defined(LOG_LEVEL_WARN)
+#elif defined(APP_LOG_LEVEL_WARN)
     trantor::Logger::setLogLevel(trantor::Logger::kWarn);
     LOG_WARN << "Log level: WARN";
-#elif defined(LOG_LEVEL_ERROR)
+#elif defined(APP_LOG_LEVEL_ERROR)
     trantor::Logger::setLogLevel(trantor::Logger::kError);
     LOG_ERROR << "Log level: ERROR";
-#elif defined(LOG_LEVEL_FATAL)
+#elif defined(APP_LOG_LEVEL_FATAL)
     trantor::Logger::setLogLevel(trantor::Logger::kFatal);
 #else
     // Fallback to INFO if not specified
