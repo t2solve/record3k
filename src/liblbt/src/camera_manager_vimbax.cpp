@@ -5,6 +5,18 @@
 #include <mutex>
 #include <memory>
 #include <thread>
+#include <QDebug>
+
+// Logging helpers — use Qt's log infrastructure so verbosity can be controlled
+// at runtime via QT_LOGGING_RULES="*.debug=false" without a rebuild.
+// CMV_DEBUG : low-level operational detail (per-field, per-loop, mutex state)
+// CMV_INFO  : key milestones visible at INFO level (startup, camera count)
+// CMV_WARN  : recoverable problems
+// CMV_ERROR : hard failures
+#define CMV_DEBUG(msg) do { std::ostringstream _oss; _oss << msg; qDebug()    << _oss.str().c_str(); } while(0)
+#define CMV_INFO(msg)  do { std::ostringstream _oss; _oss << msg; qInfo()     << _oss.str().c_str(); } while(0)
+#define CMV_WARN(msg)  do { std::ostringstream _oss; _oss << msg; qWarning()  << _oss.str().c_str(); } while(0)
+#define CMV_ERROR(msg) do { std::ostringstream _oss; _oss << msg; qCritical() << _oss.str().c_str(); } while(0)
 
 #ifdef VIMBAX_ENABLED
 #include <VmbCPP/VmbCPP.h>
@@ -22,28 +34,9 @@ public:
         if (feature != nullptr) {
             std::string featureName;
             VmbInt64_t featureValue = 0;
-            
             if (feature->GetName(featureName) == VmbErrorSuccess) {
                 feature->GetValue(featureValue);
-                std::cout << "[VimbaxEventObserver] Event occurred: " << featureName 
-                          << " = " << featureValue << std::endl;
-                
-                // Log specific event types
-                if (featureName.find("EventAcquisitionStart") != std::string::npos) {
-                    std::cout << "[VimbaxEventObserver] >>> Camera acquisition started" << std::endl;
-                }
-                else if (featureName.find("EventAcquisitionEnd") != std::string::npos) {
-                    std::cout << "[VimbaxEventObserver] >>> Camera acquisition ended" << std::endl;
-                }
-                else if (featureName.find("EventFrameTrigger") != std::string::npos) {
-                    std::cout << "[VimbaxEventObserver] >>> Frame trigger received" << std::endl;
-                }
-                else if (featureName.find("EventExposureEnd") != std::string::npos) {
-                    std::cout << "[VimbaxEventObserver] >>> Exposure completed" << std::endl;
-                }
-                else {
-                    std::cout << "[VimbaxEventObserver] >>> Generic event" << std::endl;
-                }
+                CMV_DEBUG("[VimbaxEventObserver] Event: " << featureName << " = " << featureValue);
             }
         }
     }
@@ -59,65 +52,58 @@ public:
             std::lock_guard<std::mutex> lock(mutex_);
             
             if (isStarted_) {
-                std::cout << "[CameraManagerVimbax] System already started" << std::endl;
+                CMV_DEBUG("[CameraManagerVimbax] System already started");
                 return true;
             }
             
             status_.isBuilt = true;
-            std::cout << "[CameraManagerVimbax] VimbaX is built into this binary" << std::endl;
+            CMV_INFO("[CameraManagerVimbax] VimbaX is built into this binary");
         } // Release mutex before VmbSystem::Startup() which may take time
         
         try {
             // Prepare transport layer file path
             std::string pathConfig;
             if (!ctiFilePath.empty()) {
-                std::cout << "[CameraManagerVimbax] Received .cti file path: " << ctiFilePath << std::endl;
+                CMV_DEBUG("[CameraManagerVimbax] Received .cti file path: " << ctiFilePath.string());
                 std::filesystem::path absPath = std::filesystem::absolute(ctiFilePath);
-                std::cout << "[CameraManagerVimbax] Absolute path: " << absPath << std::endl;
-                
+                CMV_DEBUG("[CameraManagerVimbax] Absolute path: " << absPath.string());
                 if (std::filesystem::exists(absPath)) {
                     pathConfig = absPath.string();
-                    std::cout << "[CameraManagerVimbax] File exists! Using .cti file: " << pathConfig << std::endl;
+                    CMV_DEBUG("[CameraManagerVimbax] Using .cti file: " << pathConfig);
                 } else {
-                    std::cerr << "[CameraManagerVimbax] ERROR: Specified .cti file does not exist: " << absPath << std::endl;
-                    std::cerr << "[CameraManagerVimbax] Current working directory: " << std::filesystem::current_path() << std::endl;
-                    std::cerr << "[CameraManagerVimbax] Falling back to GENICAM_GENTL64_PATH" << std::endl;
+                    CMV_ERROR("[CameraManagerVimbax] Specified .cti file does not exist: " << absPath.string());
+                    CMV_ERROR("[CameraManagerVimbax] CWD: " << std::filesystem::current_path().string() << " — falling back to GENICAM_GENTL64_PATH");
                 }
             } else {
-                std::cout << "[CameraManagerVimbax] No .cti file specified, using GENICAM_GENTL64_PATH" << std::endl;
+                CMV_DEBUG("[CameraManagerVimbax] No .cti file specified, using GENICAM_GENTL64_PATH");
             }
-            
-            std::cout << "[CameraManagerVimbax] VmbSystem singleton obtained" << std::endl;
             
             // Query version before startup
             VmbVersionInfo_t versionInfo;
             VmbErrorType err = system_.QueryVersion(versionInfo);
             if (err == VmbErrorSuccess) {
-                std::cout << "[CameraManagerVimbax] VimbaX Version: " << versionInfo.major 
-                          << "." << versionInfo.minor << "." << versionInfo.patch << std::endl;
+                CMV_INFO("[CameraManagerVimbax] VimbaX version " << versionInfo.major
+                         << "." << versionInfo.minor << "." << versionInfo.patch);
             } else {
-                std::cerr << "[CameraManagerVimbax] WARNING: Could not query VimbaX version, error: " << err << std::endl;
+                CMV_WARN("[CameraManagerVimbax] Could not query VimbaX version, error: " << err);
             }
             
             // Initialize VmbSystem
-            std::cout << "[CameraManagerVimbax] Calling VmbSystem::Startup()..." << std::endl;
+            CMV_DEBUG("[CameraManagerVimbax] Calling VmbSystem::Startup()...");
             if (pathConfig.empty()) {
                 err = system_.Startup();
             } else {
-                std::cout << "[CameraManagerVimbax] Using CTI path: " << pathConfig << std::endl;
                 err = system_.Startup(pathConfig.c_str());
             }
             
             if (err != VmbErrorSuccess) {
                 std::lock_guard<std::mutex> lock(mutex_);
                 status_.errorMessage = "VmbSystem::Startup() failed with error code: " + std::to_string(err);
-                std::cerr << "[CameraManagerVimbax] ERROR: " << status_.errorMessage << std::endl;
-                std::cerr << "[CameraManagerVimbax] ERROR: VmbErrorSuccess = 0, received error = " << err << std::endl;
-                std::cerr << "[CameraManagerVimbax] ERROR: This means VimbaX failed to initialize!" << std::endl;
+                CMV_ERROR("[CameraManagerVimbax] VmbSystem::Startup() failed, err=" << err);
                 return false;
             }
             
-            std::cout << "[CameraManagerVimbax] *** VmbSystem::Startup() SUCCEEDED (err == VmbErrorSuccess) ***" << std::endl;
+            CMV_INFO("[CameraManagerVimbax] VmbSystem::Startup() succeeded");
             
             // Update status with mutex
             {
@@ -131,7 +117,7 @@ public:
                 
                 // Create observer instance (keep it alive as a member)
                 eventObserver_ = VmbCPP::IFeatureObserverPtr(new VimbaxEventObserver());
-                std::cout << "[CameraManagerVimbax] Event observer created" << std::endl;
+                CMV_DEBUG("[CameraManagerVimbax] Event observer created");
             }
             
             // Enumerate system components (without holding mutex)
@@ -139,23 +125,23 @@ public:
             enumerateInterfaces();
             
             // Update cameras (this will acquire/release mutex as needed)
-            std::cout << "[CameraManagerVimbax] Calling updateCameras()..." << std::endl;
+            CMV_DEBUG("[CameraManagerVimbax] Calling updateCameras()...");
             updateCameras();
             
-            std::cout << "[CameraManagerVimbax] Initialization complete. System ready." << std::endl;
+            CMV_INFO("[CameraManagerVimbax] Initialization complete. System ready.");
             return true;
             
         } catch (const std::exception& e) {
             std::lock_guard<std::mutex> lock(mutex_);
             status_.errorMessage = std::string("Exception during VimbaX startup: ") + e.what();
-            std::cerr << "[CameraManagerVimbax] ERROR: " << status_.errorMessage << std::endl;
+            CMV_ERROR("[CameraManagerVimbax] Exception during startup: " << e.what());
             status_.startupSuccess = false;
             isStarted_ = false;
             return false;
         } catch (...) {
             std::lock_guard<std::mutex> lock(mutex_);
             status_.errorMessage = "Unknown exception during VimbaX startup";
-            std::cerr << "[CameraManagerVimbax] ERROR: " << status_.errorMessage << std::endl;
+            CMV_ERROR("[CameraManagerVimbax] Unknown exception during startup");
             status_.startupSuccess = false;
             isStarted_ = false;
             return false;
@@ -166,31 +152,26 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         
         if (!isStarted_) {
-            std::cout << "[CameraManagerVimbax] System not started, nothing to shutdown" << std::endl;
+            CMV_DEBUG("[CameraManagerVimbax] shutdown() called but system not started");
             return;
         }
         
-        std::cout << "[CameraManagerVimbax] Calling VmbSystem::Shutdown()..." << std::endl;
+        CMV_DEBUG("[CameraManagerVimbax] Calling VmbSystem::Shutdown()...");
         try {
             system_.Shutdown();
             isStarted_ = false;
             status_.startupSuccess = false;
-            std::cout << "[CameraManagerVimbax] VimbaX system shutdown complete" << std::endl;
+            CMV_INFO("[CameraManagerVimbax] VimbaX system shutdown complete");
         } catch (const std::exception& e) {
-            std::cerr << "[CameraManagerVimbax] Exception during shutdown: " << e.what() << std::endl;
+            CMV_WARN("[CameraManagerVimbax] Exception during shutdown: " << e.what());
         } catch (...) {
-            std::cerr << "[CameraManagerVimbax] Unknown exception during shutdown" << std::endl;
+            CMV_WARN("[CameraManagerVimbax] Unknown exception during shutdown");
         }
     }
     
     bool isReady() const {
-        std::cout << "[CameraManagerVimbax::isReady] Attempting to acquire mutex..." << std::endl;
         std::lock_guard<std::mutex> lock(mutex_);
-        std::cout << "[CameraManagerVimbax::isReady] Mutex acquired! isStarted_=" << isStarted_ 
-                  << ", startupSuccess=" << status_.startupSuccess << std::endl;
-        bool result = isStarted_ && status_.startupSuccess;
-        std::cout << "[CameraManagerVimbax::isReady] Returning: " << result << std::endl;
-        return result;
+        return isStarted_ && status_.startupSuccess;
     }
     
     VimbaXStatus getStatus() const {
@@ -204,24 +185,22 @@ public:
     }
     
     void updateCameras() {
-        std::cout << "[CameraManagerVimbax::updateCameras] Starting camera update..." << std::endl;
-        
         // Check if system is started (with mutex)
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!isStarted_) {
-                std::cout << "[CameraManagerVimbax::updateCameras] System not started, skipping" << std::endl;
+                CMV_DEBUG("[CameraManagerVimbax::updateCameras] System not started, skipping");
                 return;
             }
         }
         
-        // Give GigE cameras extra time for network discovery
-        std::cout << "[CameraManagerVimbax::updateCameras] Waiting 1000ms for GigE camera discovery on network interfaces..." << std::endl;
+        // Give GigE cameras extra time for broadcast/multicast network discovery
+        CMV_INFO("[CameraManagerVimbax] Starting GigE camera discovery via broadcast/multicast...");
+        CMV_DEBUG("[CameraManagerVimbax::updateCameras] Waiting 1000ms for network discovery");
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         
-        // Do the blocking GetCameras() call WITHOUT holding the mutex!
-        std::cout << "[CameraManagerVimbax::updateCameras] Calling GetCameras() WITHOUT mutex - other threads can proceed..." << std::endl;
-        std::cout << "[CameraManagerVimbax::updateCameras] NOTE: This may block for several seconds on network discovery" << std::endl;
+        // GetCameras() is the broadcast-based discovery call — may block several seconds
+        CMV_INFO("[CameraManagerVimbax] Calling GetCameras() — broadcast discovery in progress (may take a few seconds)");
         auto startTime = std::chrono::steady_clock::now();
         
         VmbCPP::CameraPtrVector vmbCameras;
@@ -229,356 +208,217 @@ public:
         
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - startTime).count();
-        std::cout << "[CameraManagerVimbax::updateCameras] GetCameras() returned after " << elapsed << "ms with error code: " << err << std::endl;
+        CMV_DEBUG("[CameraManagerVimbax::updateCameras] GetCameras() returned after " << elapsed << "ms, err=" << err);
         
-        // Now acquire mutex to update the results
-        std::cout << "[CameraManagerVimbax::updateCameras] Acquiring mutex to update results..." << std::endl;
         std::lock_guard<std::mutex> lock(mutex_);
-        std::cout << "[CameraManagerVimbax::updateCameras] Mutex acquired, updating camera list..." << std::endl;
-        
         cameras_.clear();
         discoveryComplete_ = true;
-        std::cout << "[CameraManagerVimbax::updateCameras] Set discoveryComplete_ = true" << std::endl;
         
         if (err != VmbErrorSuccess) {
-            std::cerr << "[CameraManagerVimbax] WARNING: Could not get cameras, error: " << err << std::endl;
+            CMV_WARN("[CameraManagerVimbax] GetCameras() failed, err=" << err);
             status_.cameraCount = 0;
             return;
         }
         
         status_.cameraCount = vmbCameras.size();
-        std::cout << "[CameraManagerVimbax] === Camera Discovery Results ===" << std::endl;
-        std::cout << "[CameraManagerVimbax] *** Found " << status_.cameraCount << " camera(s) ***" << std::endl;
+        CMV_INFO("[CameraManagerVimbax] Broadcast discovery complete — found " << status_.cameraCount << " camera(s)");
         
         if (vmbCameras.empty()) {
-            std::cerr << "[CameraManagerVimbax] WARNING: NO CAMERAS FOUND!" << std::endl;
-            std::cerr << "[CameraManagerVimbax] Possible reasons:" << std::endl;
-            std::cerr << "[CameraManagerVimbax]   1. No cameras connected" << std::endl;
-            std::cerr << "[CameraManagerVimbax]   2. Camera not on same subnet as interface" << std::endl;
-            std::cerr << "[CameraManagerVimbax]   3. Wrong transport layer (.cti file)" << std::endl;
-            std::cerr << "[CameraManagerVimbax]   4. Insufficient discovery time (GigE needs time)" << std::endl;
-            std::cerr << "[CameraManagerVimbax]   5. Firewall blocking GigE Vision discovery" << std::endl;
+            CMV_WARN("[CameraManagerVimbax] No cameras found via broadcast. Possible reasons:"
+                     " (1) no cameras connected, (2) different subnet, (3) wrong .cti file,"
+                     " (4) broadcast blocked by firewall/switch — consider enabling DETECT_UNI_CAST_ONLY");
             return;
         }
         
         for (size_t i = 0; i < vmbCameras.size(); ++i) {
             const auto& cam = vmbCameras[i];
-            std::cout << "[CameraManagerVimbax] ================================" << std::endl;
-            std::cout << "[CameraManagerVimbax] === Camera " << (i+1) << " ===" << std::endl;
-            
             VimbaXCameraInfo info;
             VmbErrorType err;
             
-            err = cam->GetName(info.name);
-            if (err == VmbErrorSuccess) {
-                std::cout << "[CameraManagerVimbax] /// Camera Name           : " << info.name << std::endl;
-            } else {
-                std::cout << "[CameraManagerVimbax] /// Camera Name           : [Could not get name, error: " << err << "]" << std::endl;
-                info.name = "[Unknown]";
-            }
+            if (cam->GetName(info.name)         != VmbErrorSuccess) info.name     = "[Unknown]";
+            if (cam->GetModel(info.model)        != VmbErrorSuccess) info.model    = "[Unknown]";
+            if (cam->GetID(info.id)              != VmbErrorSuccess) info.id       = "[Unknown]";
+            if (cam->GetSerialNumber(info.serial)!= VmbErrorSuccess) info.serial   = "[Unknown]";
+            if (cam->GetInterfaceID(info.interfaceId) != VmbErrorSuccess) info.interfaceId = "[Unknown]";
             
-            err = cam->GetModel(info.model);
-            if (err == VmbErrorSuccess) {
-                std::cout << "[CameraManagerVimbax] /// Model Name            : " << info.model << std::endl;
-            } else {
-                std::cout << "[CameraManagerVimbax] /// Model Name            : [Could not get model, error: " << err << "]" << std::endl;
-                info.model = "[Unknown]";
-            }
+            // Log the key identity fields at INFO so they always appear in the log
+            CMV_INFO("[CameraManagerVimbax] Camera[" << (i+1) << "] "
+                     << info.name << "  id=" << info.id
+                     << "  serial=" << info.serial
+                     << "  iface=" << info.interfaceId);
             
-            err = cam->GetID(info.id);
-            if (err == VmbErrorSuccess) {
-                std::cout << "[CameraManagerVimbax] /// Camera ID             : " << info.id << std::endl;
-            } else {
-                std::cout << "[CameraManagerVimbax] /// Camera ID             : [Could not get ID, error: " << err << "]" << std::endl;
-                info.id = "[Unknown]";
-            }
-            
-            err = cam->GetSerialNumber(info.serial);
-            if (err == VmbErrorSuccess) {
-                std::cout << "[CameraManagerVimbax] /// Serial Number         : " << info.serial << std::endl;
-            } else {
-                std::cout << "[CameraManagerVimbax] /// Serial Number         : [Could not get serial, error: " << err << "]" << std::endl;
-                info.serial = "[Unknown]";
-            }
-            
-            err = cam->GetInterfaceID(info.interfaceId);
-            if (err == VmbErrorSuccess) {
-                std::cout << "[CameraManagerVimbax] /// @ Interface ID        : " << info.interfaceId << std::endl;
-            } else {
-                std::cout << "[CameraManagerVimbax] /// @ Interface ID        : [Could not get interface ID, error: " << err << "]" << std::endl;
-                info.interfaceId = "[Unknown]";
-            }
-            
-            // Get Transport Layer info
+            // Transport layer — debug only
             VmbCPP::TransportLayerPtr pTransportLayer;
             err = cam->GetTransportLayer(pTransportLayer);
             if (err == VmbErrorSuccess && pTransportLayer) {
                 std::string tlID, tlPath;
-                if (pTransportLayer->GetID(tlID) == VmbErrorSuccess) {
-                    std::cout << "[CameraManagerVimbax] /// @ TransportLayer ID   : " << tlID << std::endl;
-                }
-                if (pTransportLayer->GetPath(tlPath) == VmbErrorSuccess) {
-                    std::cout << "[CameraManagerVimbax] /// @ TransportLayer Path : " << tlPath << std::endl;
-                }
+                pTransportLayer->GetID(tlID);
+                pTransportLayer->GetPath(tlPath);
+                CMV_DEBUG("[CameraManagerVimbax]   TL id=" << tlID << "  path=" << tlPath);
             } else {
-                std::cout << "[CameraManagerVimbax] /// @ TransportLayer      : [Could not get TL, error: " << err << "]" << std::endl;
+                CMV_DEBUG("[CameraManagerVimbax]   TL: unavailable (err=" << err << ")");
             }
             
-            // Try to get MAC address (GigE cameras)
+            // MAC address — debug only
             info.macAddress = "N/A";
             VmbCPP::FeaturePtr macFeature;
             if (cam->GetFeatureByName("GevDeviceMACAddress", macFeature) == VmbErrorSuccess) {
                 VmbInt64_t macValue;
                 if (macFeature->GetValue(macValue) == VmbErrorSuccess) {
-                    // Convert MAC address from integer to string format
                     std::ostringstream oss;
                     oss << std::hex << std::setfill('0') << std::uppercase;
                     oss << std::setw(2) << ((macValue >> 40) & 0xFF) << ":"
                         << std::setw(2) << ((macValue >> 32) & 0xFF) << ":"
                         << std::setw(2) << ((macValue >> 24) & 0xFF) << ":"
                         << std::setw(2) << ((macValue >> 16) & 0xFF) << ":"
-                        << std::setw(2) << ((macValue >> 8) & 0xFF) << ":"
+                        << std::setw(2) << ((macValue >> 8)  & 0xFF) << ":"
                         << std::setw(2) << (macValue & 0xFF);
                     info.macAddress = oss.str();
-                    std::cout << "[CameraManagerVimbax] /// MAC Address          : " << info.macAddress << std::endl;
+                    CMV_DEBUG("[CameraManagerVimbax]   MAC=" << info.macAddress);
                 }
             }
             
             cameras_.push_back(info);
         }
-        std::cout << "[CameraManagerVimbax] ================================" << std::endl;
-        std::cout << "[CameraManagerVimbax] === End Camera List ===" << std::endl;
-        
-        std::cout << "[CameraManagerVimbax::updateCameras] Camera list updated, mutex will be released" << std::endl;
         
         // Release mutex before registering event observers (they may take time)
         lock.~lock_guard();
         
-        // Register event observers for each camera (without holding mutex)
-        std::cout << "[CameraManagerVimbax::updateCameras] Registering event observers for cameras..." << std::endl;
         for (size_t i = 0; i < vmbCameras.size(); ++i) {
             registerCameraEventObserver(vmbCameras[i], cameras_[i].id);
         }
-        
-        std::cout << "[CameraManagerVimbax::updateCameras] Camera discovery and event registration complete" << std::endl;
+        CMV_DEBUG("[CameraManagerVimbax::updateCameras] Camera discovery and event registration complete");
     }
     
     bool isDiscoveryComplete() const {
-        std::cout << "[CameraManagerVimbax::isDiscoveryComplete] Attempting to acquire mutex..." << std::endl;
         std::lock_guard<std::mutex> lock(mutex_);
-        std::cout << "[CameraManagerVimbax::isDiscoveryComplete] Mutex acquired! discoveryComplete_=" << discoveryComplete_ << std::endl;
         return discoveryComplete_;
     }
 
 private:
     void enumerateTransportLayers() {
-        std::cout << "[CameraManagerVimbax] === Enumerating Transport Layers ===" << std::endl;
         VmbCPP::TransportLayerPtrVector transportLayers;
         VmbErrorType err = system_.GetTransportLayers(transportLayers);
         
         if (err != VmbErrorSuccess) {
-            std::cerr << "[CameraManagerVimbax] ERROR: GetTransportLayers() failed with error: " << err << std::endl;
-            std::cerr << "[CameraManagerVimbax] ERROR: Cannot enumerate transport layers!" << std::endl;
+            CMV_ERROR("[CameraManagerVimbax] GetTransportLayers() failed, err=" << err);
             status_.transportLayerCount = 0;
             return;
         }
         
         status_.transportLayerCount = transportLayers.size();
-        std::cout << "[CameraManagerVimbax] *** GetTransportLayers() succeeded ***" << std::endl;
-        std::cout << "[CameraManagerVimbax] Found " << status_.transportLayerCount << " transport layer(s)" << std::endl;
+        CMV_INFO("[CameraManagerVimbax] Found " << status_.transportLayerCount << " transport layer(s)");
         
         if (transportLayers.empty()) {
-            std::cerr << "[CameraManagerVimbax] WARNING: No transport layers found! Check CTI files." << std::endl;
+            CMV_WARN("[CameraManagerVimbax] No transport layers found — check CTI files");
             return;
         }
         
         for (size_t i = 0; i < transportLayers.size(); ++i) {
             const auto& tl = transportLayers[i];
-            std::cout << "[CameraManagerVimbax] --- Transport Layer " << (i+1) << " ---" << std::endl;
-            
             std::string tlID, tlPath, tlType, tlModel, tlVendor, tlVersion;
             
-            if (tl->GetID(tlID) == VmbErrorSuccess) {
-                std::cout << "[CameraManagerVimbax]   ID: " << tlID << std::endl;
-            } else {
-                std::cout << "[CameraManagerVimbax]   ID: [Could not get ID]" << std::endl;
-            }
-            
-            if (tl->GetPath(tlPath) == VmbErrorSuccess) {
-                std::cout << "[CameraManagerVimbax]   Path: " << tlPath << std::endl;
-            } else {
-                std::cout << "[CameraManagerVimbax]   Path: [Could not get path]" << std::endl;
-            }
-            
-            // if (tl->GetModel(tlModel) == VmbErrorSuccess) {
-            //     std::cout << "[CameraManagerVimbax]   Model: " << tlModel << std::endl;
-            // }
-            
-            // if (tl->GetVendor(tlVendor) == VmbErrorSuccess) {
-            //     std::cout << "[CameraManagerVimbax]   Vendor: " << tlVendor << std::endl;
-            // }
+            tl->GetID(tlID);
+            tl->GetPath(tlPath);
             
             VmbCPP::FeaturePtr feature;
-            if (tl->GetFeatureByName("TLType", feature) == VmbErrorSuccess) {
-                if (feature->GetValue(tlType) == VmbErrorSuccess) {
-                    std::cout << "[CameraManagerVimbax]   Type: " << tlType << std::endl;
-                }
-            }
-            
-            if (tl->GetFeatureByName("TLVersion", feature) == VmbErrorSuccess) {
-                if (feature->GetValue(tlVersion) == VmbErrorSuccess) {
-                    std::cout << "[CameraManagerVimbax]   Version: " << tlVersion << std::endl;
-                }
-            }
+            if (tl->GetFeatureByName("TLType", feature) == VmbErrorSuccess) feature->GetValue(tlType);
+            if (tl->GetFeatureByName("TLVersion", feature) == VmbErrorSuccess) feature->GetValue(tlVersion);
+            CMV_DEBUG("[CameraManagerVimbax] TL[" << (i+1) << "] id=" << tlID
+                      << "  type=" << tlType << "  version=" << tlVersion
+                      << "  path=" << tlPath);
         }
-        std::cout << "[CameraManagerVimbax] === End Transport Layers ===" << std::endl;
     }
     
     void enumerateInterfaces() {
-        std::cout << "[CameraManagerVimbax] === Enumerating Interfaces ===" << std::endl;
         VmbCPP::InterfacePtrVector interfaces;
         VmbErrorType err = system_.GetInterfaces(interfaces);
         
         if (err != VmbErrorSuccess) {
-            std::cerr << "[CameraManagerVimbax] ERROR: GetInterfaces() failed with error: " << err << std::endl;
-            std::cerr << "[CameraManagerVimbax] ERROR: Cannot enumerate interfaces!" << std::endl;
+            CMV_ERROR("[CameraManagerVimbax] GetInterfaces() failed, err=" << err);
             status_.interfaceCount = 0;
             return;
         }
         
         status_.interfaceCount = interfaces.size();
-        std::cout << "[CameraManagerVimbax] *** GetInterfaces() succeeded ***" << std::endl;
-        std::cout << "[CameraManagerVimbax] Found " << status_.interfaceCount << " interface(s)" << std::endl;
+        CMV_INFO("[CameraManagerVimbax] Found " << status_.interfaceCount << " network interface(s)");
         
         if (interfaces.empty()) {
-            std::cerr << "[CameraManagerVimbax] WARNING: No interfaces found!" << std::endl;
+            CMV_WARN("[CameraManagerVimbax] No interfaces found");
             return;
         }
         
         for (size_t i = 0; i < interfaces.size(); ++i) {
             const auto& iface = interfaces[i];
-            std::cout << "[CameraManagerVimbax] --- Interface " << (i+1) << " ---" << std::endl;
-            
             std::string ifaceID, ifaceType, ifaceName;
-            
-            if (iface->GetID(ifaceID) == VmbErrorSuccess) {
-                std::cout << "[CameraManagerVimbax]   ID: " << ifaceID << std::endl;
-            } else {
-                std::cout << "[CameraManagerVimbax]   ID: [Could not get ID]" << std::endl;
-            }
-            
-            if (iface->GetName(ifaceName) == VmbErrorSuccess) {
-                std::cout << "[CameraManagerVimbax]   Name: " << ifaceName << std::endl;
-            }
-            
+            iface->GetID(ifaceID);
+            iface->GetName(ifaceName);
             VmbCPP::FeaturePtr feature;
-            if (iface->GetFeatureByName("InterfaceType", feature) == VmbErrorSuccess) {
-                if (feature->GetValue(ifaceType) == VmbErrorSuccess) {
-                    std::cout << "[CameraManagerVimbax]   Type: " << ifaceType << std::endl;
-                }
-            }
+            if (iface->GetFeatureByName("InterfaceType", feature) == VmbErrorSuccess)
+                feature->GetValue(ifaceType);
             
-            // For GigE interfaces, try to get IP and MAC info
+            // For GigE interfaces also log IP/subnet — relevant for broadcast discovery
             if (ifaceType == "GEV" || ifaceID.find("GigE") != std::string::npos || ifaceID.find("eno") != std::string::npos) {
-                std::cout << "[CameraManagerVimbax]   >>> This is a GigE interface <<<" << std::endl;
-                
                 VmbInt64_t ipAddr = 0, subnetMask = 0, macAddr = 0;
-                if (iface->GetFeatureByName("GevInterfaceIPAddress", feature) == VmbErrorSuccess) {
-                    if (feature->GetValue(ipAddr) == VmbErrorSuccess) {
-                        std::cout << "[CameraManagerVimbax]   IP Address: "
-                                  << ((ipAddr >> 24) & 0xFF) << "."
-                                  << ((ipAddr >> 16) & 0xFF) << "."
-                                  << ((ipAddr >> 8) & 0xFF) << "."
-                                  << (ipAddr & 0xFF) << std::endl;
-                    }
-                }
-                
-                if (iface->GetFeatureByName("GevInterfaceSubnetMask", feature) == VmbErrorSuccess) {
-                    if (feature->GetValue(subnetMask) == VmbErrorSuccess) {
-                        std::cout << "[CameraManagerVimbax]   Subnet Mask: "
-                                  << ((subnetMask >> 24) & 0xFF) << "."
-                                  << ((subnetMask >> 16) & 0xFF) << "."
-                                  << ((subnetMask >> 8) & 0xFF) << "."
-                                  << (subnetMask & 0xFF) << std::endl;
-                    }
-                }
-                
-                if (iface->GetFeatureByName("GevInterfaceMACAddress", feature) == VmbErrorSuccess) {
-                    if (feature->GetValue(macAddr) == VmbErrorSuccess) {
-                        std::cout << "[CameraManagerVimbax]   MAC Address: "
-                                  << std::hex << std::setfill('0') << std::uppercase
-                                  << std::setw(2) << ((macAddr >> 40) & 0xFF) << ":"
-                                  << std::setw(2) << ((macAddr >> 32) & 0xFF) << ":"
-                                  << std::setw(2) << ((macAddr >> 24) & 0xFF) << ":"
-                                  << std::setw(2) << ((macAddr >> 16) & 0xFF) << ":"
-                                  << std::setw(2) << ((macAddr >> 8) & 0xFF) << ":"
-                                  << std::setw(2) << (macAddr & 0xFF)
-                                  << std::dec << std::endl;
-                    }
-                }
+                if (iface->GetFeatureByName("GevInterfaceIPAddress",  feature) == VmbErrorSuccess) feature->GetValue(ipAddr);
+                if (iface->GetFeatureByName("GevInterfaceSubnetMask", feature) == VmbErrorSuccess) feature->GetValue(subnetMask);
+                if (iface->GetFeatureByName("GevInterfaceMACAddress", feature) == VmbErrorSuccess) feature->GetValue(macAddr);
+                std::ostringstream macOss;
+                macOss << std::hex << std::setfill('0') << std::uppercase
+                       << std::setw(2) << ((macAddr >> 40) & 0xFF) << ":"
+                       << std::setw(2) << ((macAddr >> 32) & 0xFF) << ":"
+                       << std::setw(2) << ((macAddr >> 24) & 0xFF) << ":"
+                       << std::setw(2) << ((macAddr >> 16) & 0xFF) << ":"
+                       << std::setw(2) << ((macAddr >> 8)  & 0xFF) << ":"
+                       << std::setw(2) << (macAddr & 0xFF);
+                CMV_DEBUG("[CameraManagerVimbax] GEV iface[" << (i+1) << "] id=" << ifaceID
+                          << "  ip=" << ((ipAddr>>24)&0xFF) << "." << ((ipAddr>>16)&0xFF)
+                          << "." << ((ipAddr>>8)&0xFF) << "." << (ipAddr&0xFF)
+                          << "  mask=" << ((subnetMask>>24)&0xFF) << "." << ((subnetMask>>16)&0xFF)
+                          << "." << ((subnetMask>>8)&0xFF) << "." << (subnetMask&0xFF)
+                          << "  mac=" << macOss.str());
+            } else {
+                CMV_DEBUG("[CameraManagerVimbax] Iface[" << (i+1) << "] id=" << ifaceID
+                          << "  type=" << ifaceType);
             }
         }
-        std::cout << "[CameraManagerVimbax] === End Interfaces ===" << std::endl;
     }
     
     void registerCameraEventObserver(const VmbCPP::CameraPtr& camera, const std::string& camId) {
         if (!eventObserver_) {
-            std::cout << "[CameraManagerVimbax] No event observer available, skipping event registration for: " << camId << std::endl;
+            CMV_DEBUG("[CameraManagerVimbax] No event observer, skipping registration for: " << camId);
             return;
         }
         
-        std::cout << "[CameraManagerVimbax] Registering event observer for camera: " << camId << std::endl;
-        
-        // Open camera to access its features
         VmbErrorType err = camera->Open(VmbAccessModeRead);
-        if (err == VmbErrorSuccess) {
-            // List of common camera events to monitor
-            const std::vector<std::string> cameraEvents = {
-                "AcquisitionStart",
-                "AcquisitionEnd",
-                "FrameTrigger",
-                "ExposureEnd",
-                "Error"
-            };
-            
-            VmbCPP::FeaturePtr selectorFeature, notificationFeature;
-            
-            // Check if EventSelector is available
-            err = camera->GetFeatureByName("EventSelector", selectorFeature);
-            if (err == VmbErrorSuccess) {
-                std::cout << "[CameraManagerVimbax]   EventSelector available, registering events..." << std::endl;
-                for (const auto& eventType : cameraEvents) {
-                    // Set event selector
-                    if (selectorFeature->SetValue(eventType.c_str()) == VmbErrorSuccess) {
-                        // Enable notification for this event
-                        if (camera->GetFeatureByName("EventNotification", notificationFeature) == VmbErrorSuccess) {
-                            if (notificationFeature->SetValue("On") == VmbErrorSuccess) {
-                                // Register observer for the event feature
-                                std::string eventFeatureName = "Event" + eventType;
-                                VmbCPP::FeaturePtr eventFeature;
-                                if (camera->GetFeatureByName(eventFeatureName.c_str(), eventFeature) == VmbErrorSuccess) {
-                                    if (eventFeature->RegisterObserver(eventObserver_) == VmbErrorSuccess) {
-                                        std::cout << "[CameraManagerVimbax]     ✓ Registered observer for: " << eventType << std::endl;
-                                    } else {
-                                        std::cout << "[CameraManagerVimbax]     ✗ Failed to register observer for: " << eventType << std::endl;
-                                    }
-                                } else {
-                                    std::cout << "[CameraManagerVimbax]     ✗ Event feature not found: " << eventFeatureName << std::endl;
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                std::cout << "[CameraManagerVimbax]   EventSelector not available (error: " << err << ")" << std::endl;
-            }
-            
-            // Close camera after registration
-            camera->Close();
-            std::cout << "[CameraManagerVimbax] Event registration complete for: " << camId << std::endl;
-        } else {
-            std::cout << "[CameraManagerVimbax] Could not open camera for event registration (error: " << err << ")" << std::endl;
+        if (err != VmbErrorSuccess) {
+            CMV_DEBUG("[CameraManagerVimbax] Cannot open camera for event registration (err=" << err << "): " << camId);
+            return;
         }
+        
+        const std::vector<std::string> cameraEvents = {
+            "AcquisitionStart", "AcquisitionEnd", "FrameTrigger", "ExposureEnd", "Error"
+        };
+        
+        VmbCPP::FeaturePtr selectorFeature, notificationFeature;
+        err = camera->GetFeatureByName("EventSelector", selectorFeature);
+        if (err == VmbErrorSuccess) {
+            for (const auto& eventType : cameraEvents) {
+                if (selectorFeature->SetValue(eventType.c_str()) != VmbErrorSuccess) continue;
+                if (camera->GetFeatureByName("EventNotification", notificationFeature) != VmbErrorSuccess) continue;
+                if (notificationFeature->SetValue("On") != VmbErrorSuccess) continue;
+                std::string evFeatName = "Event" + eventType;
+                VmbCPP::FeaturePtr evFeat;
+                if (camera->GetFeatureByName(evFeatName.c_str(), evFeat) == VmbErrorSuccess)
+                    CMV_DEBUG("[CameraManagerVimbax] Event observer registered: " << eventType
+                              << " for " << camId
+                              << " (" << (evFeat->RegisterObserver(eventObserver_) == VmbErrorSuccess ? "ok" : "failed") << ")");
+            }
+        } else {
+            CMV_DEBUG("[CameraManagerVimbax] EventSelector unavailable for " << camId << " (err=" << err << ")");
+        }
+        
+        camera->Close();
     }
     
     VmbCPP::VmbSystem& system_;

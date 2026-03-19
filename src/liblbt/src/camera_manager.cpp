@@ -200,6 +200,32 @@ CameraTestResult CameraManager::testCamera(const api::CameraInfo& cam, const std
                 }
             }
             
+            // Fallback: Try by IP address (for broadcast-blocked GigE networks)
+            if (cam.ip && !cam.ip->empty()) {
+                std::cout << "[CameraManager] Attempting to open camera by IP address: " << *cam.ip << std::endl;
+                // Pass serial and MAC for cross-verification inside Strategy 4
+                VimbaXFrameSource src_by_ip(
+                    cam.serialNumber.value_or(""),
+                    cam.macAddress,
+                    false,   // debugLog
+                    *cam.ip  // cameraIp — triggers Strategy 4
+                );
+                std::cout << "[CameraManager] VimbaXFrameSource created, checking if ready..." << std::endl;
+                if (src_by_ip.isReady()) {
+                    std::cout << "[CameraManager] Camera ready via IP, acquiring frame..." << std::endl;
+                    auto frame = src_by_ip.nextFrame();
+                    if (frame != nullptr) {
+                        std::cout << "[CameraManager] SUCCESS: Got frame via IP address" << std::endl;
+                        return CameraTestResult::SUCCESS;
+                    } else {
+                        std::cerr << "[CameraManager] ERROR: Camera ready but no frame via IP" << std::endl;
+                        return CameraTestResult::ERROR_NO_FRAME;
+                    }
+                } else {
+                    std::cerr << "[CameraManager] ERROR: Camera not ready via IP address" << std::endl;
+                }
+            }
+
             std::cerr << "[CameraManager] ERROR: No valid serial or MAC address provided for VimbaX camera" << std::endl;
             std::cerr << "[CameraManager] Either serialNumber or macAddress is required to identify specific VimbaX cameras" << std::endl;
             return CameraTestResult::ERROR_NOT_FOUND;

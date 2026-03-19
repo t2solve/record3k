@@ -43,7 +43,8 @@ public:
         std::optional<std::string> devicePath,
         std::optional<std::string> description,
         std::string cameraType,
-        std::string status);
+        std::string status,
+        std::optional<std::string> ip = std::nullopt);
 
 
     static StatusOr<api::PipelineInfo> makePipelineInfo(

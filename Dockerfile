@@ -1,6 +1,6 @@
-# BUILD: docker build --network=host -t recorder-3k .
-# LOGIN: docker run --gpus all  --network=host  recorder-3k -it --name recorder-3k recorder-3k bash
-# RUN: docker run  --gpus all  --network=host  recorder-3k
+# BUILD: podman build --network=host -t recorder-3k .
+  # LOGIN: docker run --gpus all  --network=host  recorder-3k -it --name recorder-3k recorder-3k bash
+  # RUN: docker run  --gpus all  --network=host  recorder-3k
 # login: docker run --network=host  --gpus all  -it recorder-3k bash
 # podman run --rm -it --name recorder-3k --gpus all --network=host recorder-3k bash
 # podman run --rm -it --name recorder-3k --gpus nvidia.com/all --network=host recorder-3k bash
@@ -66,6 +66,10 @@ RUN export CWD="/app/vimbax/cti" && \
 
 ENV GENICAM_GENTL64_PATH=:/app/vimbax/cti
 
+#copy need vimba cti file
+RUN cp  -r /app/vimbax/cti/VimbaGigETL.cti  /app/bin/
+
+
 # add vimba lib path to LD_LIBRARY_PATH
 ENV LD_LIBRARY_PATH=/app/vimbax/api/lib/:$LD_LIBRARY_PATH
 
@@ -78,5 +82,10 @@ RUN cp  -r /app/config/examples/intialrun/*  /app/bin/
 # list bin content
 RUN ls -al /app/bin
 
-# Run the application
-CMD ["/app/bin/apiserver"]
+#copy need vimba cti file
+RUN cp  -r /app/entrypoint.sh /app/bin/
+
+# Run the application from its own directory (required for relative path lookups)
+WORKDIR /app/bin
+#CMD ["./apiserver"]
+CMD ["./entrypoint.sh", "apiserver"]

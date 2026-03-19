@@ -20,16 +20,21 @@ std::unique_ptr<IFrameSource> FrameSourceFactory::createFromCameraInfo(
     if (cameraInfo.cameraType == "TYPE_CAM_VIMBA") {
 #ifdef VIMBAX_ENABLED
         std::cout << "[FrameSourceFactory]   Using VimbaXFrameSource" << std::endl;
-        std::cout << "[FrameSourceFactory]   MAC Address: " << cameraInfo.macAddress << std::endl;
-        
-        if (cameraInfo.macAddress.empty()) {
-            std::cerr << "[FrameSourceFactory] ERROR: TYPE_CAM_VIMBA requires macAddress" << std::endl;
+        std::cout << "[FrameSourceFactory]   Serial:  " << cameraInfo.serialNumber.value_or("") << std::endl;
+        std::cout << "[FrameSourceFactory]   MAC:     " << cameraInfo.macAddress << std::endl;
+        std::cout << "[FrameSourceFactory]   IP:      " << cameraInfo.ip.value_or("") << std::endl;
+
+        const std::string serial  = cameraInfo.serialNumber.value_or("");
+        const std::string mac     = cameraInfo.macAddress;
+        const std::string ip      = cameraInfo.ip.value_or("");
+
+        if (mac.empty() && serial.empty()) {
+            std::cerr << "[FrameSourceFactory] ERROR: TYPE_CAM_VIMBA requires macAddress or serialNumber" << std::endl;
             return nullptr;
         }
-        
-        // VimbaXFrameSource constructor: (serial, interfaceIdOrMac, debugLog)
-        // We use empty serial and MAC address as interface identifier
-        return std::make_unique<VimbaXFrameSource>("", cameraInfo.macAddress, debugLog);
+
+        // VimbaXFrameSource(serial, interfaceIdOrMac, debugLog, cameraIp)
+        return std::make_unique<VimbaXFrameSource>(serial, mac, debugLog, ip);
 #else
         std::cerr << "[FrameSourceFactory] ERROR: VimbaX not enabled in build" << std::endl;
         return nullptr;

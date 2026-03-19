@@ -44,6 +44,7 @@ struct CameraInfo {
     std::string status;
     std::string datetimeLastSeen; // ISO-8601 string
     std::string cameraType; // TYPE_CAM_VIMBA, TYPE_CAM_USB, TYPE_FILE
+    std::optional<std::string> ip; // Static/persistent IP for GigE cameras (fallback when broadcast discovery is blocked)
 
     Json::Value toJson() const {
         Json::Value j;
@@ -55,6 +56,7 @@ struct CameraInfo {
         j["datetimeLastSeen"] = datetimeLastSeen;
         if (!cameraType.empty()) j["cameraType"] = cameraType;
         setIfPresent(j, "description", description);
+        setIfPresent(j, "ip", ip);
         return j;
     }
     static CameraInfo fromJson(const Json::Value& j) {
@@ -67,6 +69,7 @@ struct CameraInfo {
         x.datetimeLastSeen = j.get("datetimeLastSeen", "").asString();
         x.cameraType = j.get("cameraType", "").asString();
         if (j.isMember("description")) x.description = j["description"].asString();
+        if (j.isMember("ip")) x.ip = j["ip"].asString();
         return x;
     }
 };
