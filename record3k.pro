@@ -17,6 +17,7 @@ isEmpty(LOG_LEVEL) {
 export(LOG_LEVEL)
 
 SUBDIRS = \
+    src/api \
     src/liblbt \
     #src/test2 \
     src/test3 \

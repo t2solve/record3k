@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
+# ./localBuild.sh --cuda  --vimbax --api -j 2
+
 set -euo pipefail
 
 # need debian packages:
 # pkg-config libdrogon-dev qt6-base-dev qmake6 
+
 
 # run : e.g. /localBuild.sh --no-cuda --no-vimbax -j 8 
 # Simple local builder for the record3k project
@@ -29,6 +32,8 @@ EXTRA_CONFIG=()
 CLEAN=0
 RUN_APP=""
 VALGRIND_CALLGRIND=0
+VALGRIND_MEMCHECK=0
+BUILD_MODE="release"
 
 # Arg parsing
 while [[ $# -gt 0 ]]; do
@@ -63,8 +68,14 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       shift 2 ;;
+    --debug)
+      BUILD_MODE="debug"
+      shift ;;
     --valgrind)
       VALGRIND_CALLGRIND=1
+      shift ;;
+    --valgrind-memcheck)
+      VALGRIND_MEMCHECK=1
       shift ;;
     *)
       echo "Unknown option: $1" >&2
@@ -99,7 +110,7 @@ pushd "$BUILD_DIR" >/dev/null
 
 # Generate Makefiles
 set -x
-"$QMAKE_BIN" "$PROJECT_ROOT/record3k.pro" CONFIG+=release ${EXTRA_CONFIG[@]:-}
+"$QMAKE_BIN" "$PROJECT_ROOT/record3k.pro" CONFIG+="$BUILD_MODE" ${EXTRA_CONFIG[@]:-}
 set +x
 
 # Build
@@ -120,7 +131,32 @@ if [[ -n "$RUN_APP" ]]; then
   APP_BIN_BUILD="$BUILD_DIR/bin/$RUN_APP"
   APP_BIN_SRC="$PROJECT_ROOT/bin/$RUN_APP"
   echo "[localBuild] Requested to run: $RUN_APP"
-  if [[ "$VALGRIND_CALLGRIND" == 1 ]]; then
+  if [[ "$VALGRIND_MEMCHECK" == 1 ]]; then
+    if [[ -x "$APP_BIN_BUILD" ]]; then
+      TARGET_BIN="$APP_BIN_BUILD"
+    elif [[ -x "$APP_BIN_SRC" ]]; then
+      TARGET_BIN="$APP_BIN_SRC"
+    else
+      echo "[localBuild] Binary '$RUN_APP' not found in:\n  - $APP_BIN_BUILD\n  - $APP_BIN_SRC" >&2
+      exit 1
+    fi
+    if [[ "$BUILD_MODE" != "debug" ]]; then
+      echo "[localBuild] WARNING: Running memcheck without --debug; stack traces may be incomplete." >&2
+    fi
+    MEMCHECK_LOG="$BUILD_DIR/memcheck_${RUN_APP}.log"
+    echo "[localBuild] Running under valgrind/memcheck: $TARGET_BIN"
+    echo "[localBuild] Output log: $MEMCHECK_LOG"
+    valgrind --tool=memcheck \
+             --leak-check=full \
+             --track-origins=yes \
+             --show-leak-kinds=all \
+             --num-callers=30 \
+             --log-file="$MEMCHECK_LOG" \
+             "$TARGET_BIN"
+    echo "[localBuild] memcheck done. Report: $MEMCHECK_LOG"
+    cat "$MEMCHECK_LOG"
+    exit 0
+  elif [[ "$VALGRIND_CALLGRIND" == 1 ]]; then
     # Run under valgrind/callgrind and optionally open kcachegrind
     if [[ -x "$APP_BIN_BUILD" ]]; then
       TARGET_BIN="$APP_BIN_BUILD"
@@ -145,15 +181,14 @@ if [[ -n "$RUN_APP" ]]; then
       echo "[localBuild] callgrind_annotate not found. You can analyze with: callgrind_annotate $CALLGRIND_OUT"
     fi
     exit 0
-  else
-    if [[ -x "$APP_BIN_BUILD" ]]; then
+  fi
+  if [[ -x "$APP_BIN_BUILD" ]]; then
       exec "$APP_BIN_BUILD"
-    elif [[ -x "$APP_BIN_SRC" ]]; then
-      exec "$APP_BIN_SRC"
-    else
-      echo "[localBuild] Binary '$RUN_APP' not found in: \n  - $APP_BIN_BUILD \n  - $APP_BIN_SRC\n[localBuild] Skipping run and finishing after build." >&2
-      exit 0
-    fi
+  elif [[ -x "$APP_BIN_SRC" ]]; then
+    exec "$APP_BIN_SRC"
+  else
+    echo "[localBuild] Binary '$RUN_APP' not found in:\n  - $APP_BIN_BUILD\n  - $APP_BIN_SRC\n[localBuild] Skipping run and finishing after build." >&2
+    exit 0
   fi
 fi
 

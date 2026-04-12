@@ -9,7 +9,7 @@
 //
 // Can also be injected from the build system with: -DDETECT_UNI_CAST_ONLY
 // Uncomment the line below to activate:
-#define DETECT_UNI_CAST_ONLY
+//#define DETECT_UNI_CAST_ONLY
 // ---------------------------------------------------------------------------
 
 #include "iframe_source.h"

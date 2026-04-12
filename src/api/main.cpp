@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <csignal>
 #include <atomic>
+#include <pthread.h>
 
 #include <liblbt/process_step.h>
 #include <liblbt/process_step_factory.h>
@@ -183,6 +184,21 @@ int main(int argc, char* argv[])
     // Launch initialization in background thread
     std::thread vimbaxInitThread([vimbaxPath]() {
         LOG_INFO << "[VimbaX Thread] Initializing VimbaX camera system...";
+
+        // Unblock VimbaX signals on this thread — VimbaGigETL.cti needs SIGUSR1/SIGUSR2/SIGIO
+        // and real-time signals for its internal async GigE event mechanism. All other threads
+        // have these blocked (set in main() before drogon::app().run()).
+        {
+            sigset_t vimbaxMask;
+            sigemptyset(&vimbaxMask);
+            sigaddset(&vimbaxMask, SIGUSR1);
+            sigaddset(&vimbaxMask, SIGUSR2);
+            sigaddset(&vimbaxMask, SIGIO);
+            for (int sig = SIGRTMIN; sig <= SIGRTMAX; ++sig) {
+                sigaddset(&vimbaxMask, sig);
+            }
+            pthread_sigmask(SIG_UNBLOCK, &vimbaxMask, nullptr);
+        }
         auto& vimbaxMgr = lbt::CameraManagerVimbax::getInstance();
         
         if (vimbaxMgr.startup(vimbaxPath)) {
@@ -296,6 +312,30 @@ int main(int argc, char* argv[])
     LOG_INFO << "Starting Drogon server; swagger (if enabled) at /swagger and spec at /openapi.json";
     LOG_INFO << "CORS enabled for browser access (with preflight support)";
     LOG_INFO << "Press Ctrl+C to stop the server";
+
+// #ifdef VIMBAX_ENABLED
+//     // VimbaGigETL.cti uses POSIX real-time signals (SIGRTMIN+n) and SIGIO for async GigE
+//     // packet notification. If these signals are delivered to a Drogon IO thread (which has
+//     // no VimbaX context), the VimbaX signal handler crashes with SIGSEGV.
+//     // Fix: block all VimbaX signals on the main thread BEFORE drogon::app().run() spawns
+//     // its IO threads; they inherit this mask. The VimbaX init thread unblocks them itself.
+//     {
+//         sigset_t vimbaxMask;
+//         sigemptyset(&vimbaxMask);
+//         sigaddset(&vimbaxMask, SIGUSR1);
+//         sigaddset(&vimbaxMask, SIGUSR2);
+//         sigaddset(&vimbaxMask, SIGIO);
+//         for (int sig = SIGRTMIN; sig <= SIGRTMAX; ++sig) {
+//             sigaddset(&vimbaxMask, sig);
+//         }
+//         if (pthread_sigmask(SIG_BLOCK, &vimbaxMask, nullptr) == 0) {
+//             LOG_INFO << "VimbaGigETL signal protection: SIGUSR1/SIGUSR2/SIGIO/SIGRT* blocked on Drogon IO threads";
+//         } else {
+//             LOG_WARN << "Failed to set VimbaGigETL signal mask — camera recording may crash Drogon IO threads";
+//         }
+//     }
+// #endif
+
     drogon::app().run();
     
     // Cleanup after server shutdown

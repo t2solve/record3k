@@ -15,6 +15,8 @@
 #include <iomanip>
 #include <sstream>
 #include <random>
+#include <csignal>
+#include <pthread.h>
 
 using namespace drogon;
 using namespace api;
@@ -55,7 +57,22 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
     // Run calibration in background thread to avoid blocking API and keep RecordManager alive
     std::thread calibThread([cb = std::move(cb), camUID, desc]() mutable {
         LOG_INFO << "[DoController::cameraCalibrate Thread] Background thread started for: " << camUID;
-        
+
+// #ifdef VIMBAX_ENABLED
+//         // Unblock VimbaX signals — FrameSourceFactory opens a VimbaX GigE stream which
+//         // internally spawns packet threads; they inherit this thread's mask.
+//         {
+//             sigset_t vimbaxMask;
+//             sigemptyset(&vimbaxMask);
+//             sigaddset(&vimbaxMask, SIGUSR1);
+//             sigaddset(&vimbaxMask, SIGUSR2);
+//             sigaddset(&vimbaxMask, SIGIO);
+//             for (int sig = SIGRTMIN; sig <= SIGRTMAX; ++sig)
+//                 sigaddset(&vimbaxMask, sig);
+//             pthread_sigmask(SIG_UNBLOCK, &vimbaxMask, nullptr);
+//         }
+// #endif
+
         try {
             // Load camera info from InfoDataManager (uses cached JsonStore)
             LOG_DEBUG << "[DoController::cameraCalibrate Thread] Loading camera info for: " << camUID;
@@ -327,7 +344,22 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
         pipeLineTest]() mutable {
         std::string threadId = getThreadIdStr();
         LOG_INFO << "[DoController::recordStart][TID:" << threadId << "] Background thread started for camera: " << camUID;
-        
+
+// #ifdef VIMBAX_ENABLED
+//         // Unblock VimbaX signals — FrameSourceFactory opens a VimbaX GigE stream which
+//         // internally spawns packet threads; they inherit this thread's mask.
+//         {
+//             sigset_t vimbaxMask;
+//             sigemptyset(&vimbaxMask);
+//             sigaddset(&vimbaxMask, SIGUSR1);
+//             sigaddset(&vimbaxMask, SIGUSR2);
+//             sigaddset(&vimbaxMask, SIGIO);
+//             for (int sig = SIGRTMIN; sig <= SIGRTMAX; ++sig)
+//                 sigaddset(&vimbaxMask, sig);
+//             pthread_sigmask(SIG_UNBLOCK, &vimbaxMask, nullptr);
+//         }
+// #endif
+
         try {
             // Load camera info from InfoDataManager (uses cached JsonStore)
             LOG_DEBUG << "[DoController::recordStart][TID:" << threadId << "] Loading camera info for: " << camUID;
