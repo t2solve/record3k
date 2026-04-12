@@ -1,5 +1,7 @@
 // Live Bug Tracker 3000 - Main Application Logic
-const API_BASE_URL = localStorage.getItem('api_base_url') || 'http://127.0.0.1:8080';
+// Use relative /api path so all requests go through Caddy's reverse proxy.
+// Override at runtime via Settings by storing a custom URL in localStorage.
+const API_BASE_URL = localStorage.getItem('api_base_url') || '/api';
 
 // API Token - load from localStorage or use default for development
 const API_TOKEN = localStorage.getItem('api_token') || 'default-dev-token';

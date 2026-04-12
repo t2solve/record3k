@@ -1,0 +1,116 @@
+# record3k — Podman Compose
+#
+# Services:
+#   api     — C++/Drogon API server (built from Dockerfile, GPU-enabled)
+#   client  — Caddy serving the static web UI + reverse-proxying /api/* -> api:8080
+#
+# Requirements:
+#   podman >= 4.0   (rootless or rootful)
+#   podman-compose  (pip install podman-compose  OR  dnf/apt install podman-compose)
+#
+# Usage:
+#   podman rm -f record3k-api record3k-client # stop and remove any existing containers (optional, but ensures a clean start)
+#   podman-compose up --build          # first run (builds the api image)
+#   podman-compose up -d               # detached
+#   podman-compose logs -f api         # follow API logs
+#   podman-compose down                # stop and remove containers
+#
+# Quick-start (seed data directories once):
+#   mkdir -p data/{cameras,calibrations,pipelines,records,files,studies}
+#   cp -r config/examples/intialrun/data/* data/
+#   podman-compose up --build
+#   # UI: https://localhost:3000
+#
+# GPU notes:
+#   podman-compose does not honour the `deploy.resources` block used by
+#   Docker Compose.  GPU devices are passed via the `devices` key instead
+#   (see the `api` service below).  Adjust device paths for your system:
+#     /dev/nvidia0        — first GPU
+#     /dev/nvidiactl      — NVIDIA control device
+#     /dev/nvidia-uvm     — unified memory (required for CUDA)
+#     /dev/nvidia-uvm-tools
+#   List available NVIDIA devices:  ls /dev/nvidia*
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # API server (C++ / Drogon)
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: recorder-3k:latest
+    container_name: record3k-api
+
+    # NET_ADMIN is required by entrypoint.sh to add the GigE subnet IP alias.
+    cap_add:
+      - NET_ADMIN
+
+    # GigE camera discovery requires the container to share the host network
+    # stack so VimbaX multicast/broadcast packets reach the physical NIC.
+    network_mode: host
+
+    # NVIDIA GPU access — podman passes GPU devices directly.
+    # Adjust or add device paths to match your system (see header notes).
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+      - /dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools
+
+    environment:
+      # Override if your GigE NIC or camera subnet alias differs from the defaults
+      # defined in entrypoint.sh.
+      CAMERA_NIC: bond0
+      CAMERA_SUBNET_ALIAS: 172.18.227.1/24
+
+    volumes:
+      # Persist recorded data and configuration outside the container so it
+      # survives image rebuilds.  The host paths are created automatically by
+      # Docker/Podman if they do not yet exist.
+      - ./data/cameras:/app/bin/data/cameras
+      - ./data/calibrations:/app/bin/data/calibrations
+      - ./data/pipelines:/app/bin/data/pipelines
+      - ./data/records:/app/bin/data/records
+      - ./data/files:/app/bin/data/files
+      - ./data/studies:/app/bin/data/studies
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Web client (Caddy)
+  # ---------------------------------------------------------------------------
+  client:
+    image: docker.io/library/caddy:2-alpine
+    container_name: record3k-client
+
+    # network_mode: host so Caddy can reach the API on localhost:8080
+    # (both services share the host network since api uses host mode too).
+    network_mode: host
+
+    volumes:
+      # Static web files
+      - ./client:/srv/client:ro
+      # Caddy config — references /srv/client as the document root
+      - ./client/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddy persists its auto-generated TLS certificates here
+      - caddy_data:/data
+      - caddy_config:/config
+
+    restart: unless-stopped
+
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,4 +1,15 @@
-:3000
-root * .
-file_server browse
-header Cache-Control "no-cache"
+:3000 {
+    # /srv/client is the mount point used by Docker Compose (see compose.yaml).
+    # For local dev (caddy run from inside client/), change this to: root * .
+    root * /srv/client
+    file_server browse
+    header Cache-Control "no-cache, no-store, must-revalidate"
+
+    # Proxy API calls to the Drogon backend — eliminates CORS and avoids
+    # exposing port 8080 directly to the network.
+    reverse_proxy /api/* localhost:8080
+
+    # Self-signed TLS for LAN use (no external cert needed).
+    # Browsers will show a one-time warning; accept and continue.
+    tls internal
+}

@@ -83,7 +83,7 @@ RUN cp  -r /app/config/examples/intialrun/*  /app/bin/
 RUN ls -al /app/bin
 
 #copy need vimba cti file
-RUN cp  -r /app/entrypoint.sh /app/bin/
+RUN cp /app/entrypoint.sh /app/bin/ && chmod +x /app/bin/entrypoint.sh
 
 # Run the application from its own directory (required for relative path lookups)
 WORKDIR /app/bin
