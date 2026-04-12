@@ -9,7 +9,7 @@ INCLUDEPATH += $$PWD/../liblbt/include
 LIBS += -L$$OUT_PWD/../../lib -L$$PWD/../../lib -llbt -Wl,-rpath,\'\$$ORIGIN/../lib\'
 
 SOURCES += \
-    main.cpp 
+    main.cpp
 
-# HEADERS += \
-  
+HEADERS += \
+    VimbaXUnicastDiscovery.h

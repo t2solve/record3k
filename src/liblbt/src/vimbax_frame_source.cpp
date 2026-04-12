@@ -4,6 +4,7 @@
 #ifdef VIMBAX_ENABLED
 
 #include "frame_converter.h"
+#include <liblbt/vimbax_unicast_discovery.h>
 #include <QDebug>
 #include <opencv2/opencv.hpp>
 #include <chrono>
@@ -216,253 +217,40 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
     std::cout << "[VimbaXFrameSource] DETECT_UNI_CAST_ONLY — broadcast strategies 1-3 skipped" << std::endl;
 #endif // !DETECT_UNI_CAST_ONLY
 
-    // Strategy 4: IP-based GigE discovery (fallback when broadcast/multicast is blocked)
-    // Iterates all GigE interfaces, triggers device list update, then matches on
-    // GevDeviceIPAddress. Verifies at least one of MAC or serial matches before accepting.
+    // Strategy 4: IP-based — unicast GVCP probe (reachability check) then bare-IP open.
+    //   a) Send a GVCP DISCOVERY_CMD and log the camera's network-level response.
+    //      This confirms whether the camera is reachable on UDP:3956 without any SDK
+    //      broadcast and works on managed networks / VPN where broadcast is blocked.
+    //   b) Try OpenCameraByID(ip) — the AVT GigE TL accepts a bare IP string as a
+    //      camera ID on older transport layers that do not support writable DeviceIPAddress.
     if (!camera_ && !cameraIp.empty()) {
-        std::cout << "[VimbaXFrameSource] Strategy 4: IP-based discovery for " << cameraIp << "..." << std::endl;
+        std::cout << "[VimbaXFrameSource] Strategy 4: IP unicast — probing " << cameraIp << " ..." << std::endl;
 
-        // Convert dotted-decimal IP to integer
-        unsigned int ipa, ipb, ipc, ipd;
-        VmbInt64_t targetIpInt = 0;
-        if (sscanf(cameraIp.c_str(), "%u.%u.%u.%u", &ipa, &ipb, &ipc, &ipd) == 4) {
-            targetIpInt = (VmbInt64_t)(((VmbInt64_t)ipa << 24) | (ipb << 16) | (ipc << 8) | ipd);
+        // a) GVCP unicast probe (pure C++, no SDK)
+        const auto gev = lbt::VimbaXUnicastDiscovery::probe(cameraIp);
+        if (gev.responded) {
+            std::cout << "[VimbaXFrameSource] Strategy 4: DISCOVERY_ACK received"
+                      << "  from=" << gev.fromIp
+                      << "  devIP=" << gev.deviceIp
+                      << "  MAC=" << gev.deviceMac
+                      << "  subnet=" << gev.subnet << std::endl;
         } else {
-            std::cerr << "[VimbaXFrameSource] Strategy 4: Invalid IP address '" << cameraIp << "', skipping" << std::endl;
+            std::cout << "[VimbaXFrameSource] Strategy 4: No GVCP response from " << cameraIp
+                      << " — camera may still be addressable directly via SDK" << std::endl;
         }
 
-        if (targetIpInt != 0) {
-            InterfacePtrVector interfaces;
-            VmbErrorType ifErr = system_.GetInterfaces(interfaces);
-            if (ifErr != VmbErrorSuccess) {
-                std::cerr << "[VimbaXFrameSource] Strategy 4: GetInterfaces() failed, err=" << ifErr << std::endl;
-            } else if (interfaces.empty()) {
-                std::cerr << "[VimbaXFrameSource] Strategy 4: GetInterfaces() returned 0 interfaces — VimbaX transport layer may not be loaded (check GENICAM_GENTL64_PATH)" << std::endl;
-            } else {
-                std::cout << "[VimbaXFrameSource] Strategy 4: " << interfaces.size() << " interface(s) found" << std::endl;
-                for (auto& iface : interfaces) {
-                    if (camera_) break;
-
-                    std::string ifaceId;
-                    iface->GetID(ifaceId);
-
-                    VmbTransportLayerType ifaceType{};
-                    if (iface->GetType(ifaceType) != VmbErrorSuccess) {
-                        std::cout << "[VimbaXFrameSource] Strategy 4:   iface='" << ifaceId << "' type query failed — skipping" << std::endl;
-                        continue;
-                    }
-                    if (ifaceType != VmbTransportLayerTypeGEV) {
-                        std::cout << "[VimbaXFrameSource] Strategy 4:   iface='" << ifaceId << "' type=" << ifaceType << " (not GEV) — skipping" << std::endl;
-                        continue;
-                    }
-                    std::cout << "[VimbaXFrameSource] Strategy 4:   GEV iface='" << ifaceId << "' — triggering unicast rescan..." << std::endl;
-
-                    // --- Explicit unicast DISCOVERY_CMD ---
-                    // Send a directed GigE Vision discovery packet straight to the target IP.
-                    // Different TL vendors expose this under different feature names; try all known ones.
-                    // This is the most reliable approach when broadcast is blocked.
-                    bool unicastTriggered = false;
-
-                    // Attempt 1: GevDeviceForceIP (VimbaX / AVT TL)
-                    {
-                        FeaturePtr f;
-                        if (iface->GetFeatureByName("GevDeviceForceIPAddress", f) == VmbErrorSuccess &&
-                            f->SetValue(targetIpInt) == VmbErrorSuccess) {
-                            FeaturePtr cmd;
-                            if (iface->GetFeatureByName("GevDeviceForceIP", cmd) == VmbErrorSuccess &&
-                                cmd->RunCommand() == VmbErrorSuccess) {
-                                std::cout << "[VimbaXFrameSource] Strategy 4:   GevDeviceForceIP sent to " << cameraIp << std::endl;
-                                unicastTriggered = true;
-                                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                            }
-                        }
-                    }
-
-                    // Attempt 2: ActionDestinationIPAddress + ActionDeviceKey  (some TLs)
-                    if (!unicastTriggered) {
-                        FeaturePtr addrFeat, cmdFeat;
-                        if (iface->GetFeatureByName("ActionDestinationIPAddress", addrFeat) == VmbErrorSuccess &&
-                            addrFeat->SetValue(cameraIp.c_str()) == VmbErrorSuccess) {
-                            if (iface->GetFeatureByName("ActionCommand", cmdFeat) == VmbErrorSuccess &&
-                                cmdFeat->RunCommand() == VmbErrorSuccess) {
-                                std::cout << "[VimbaXFrameSource] Strategy 4:   ActionCommand unicast sent to " << cameraIp << std::endl;
-                                unicastTriggered = true;
-                                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                            }
-                        }
-                    }
-
-                    // Attempt 3: DeviceDiscoveryDestinationIPAddress (Pleora / eBUS style)
-                    if (!unicastTriggered) {
-                        FeaturePtr addrFeat, cmdFeat;
-                        if (iface->GetFeatureByName("DeviceDiscoveryDestinationIPAddress", addrFeat) == VmbErrorSuccess &&
-                            addrFeat->SetValue(cameraIp.c_str()) == VmbErrorSuccess) {
-                            if (iface->GetFeatureByName("DeviceDiscovery", cmdFeat) == VmbErrorSuccess &&
-                                cmdFeat->RunCommand() == VmbErrorSuccess) {
-                                std::cout << "[VimbaXFrameSource] Strategy 4:   DeviceDiscovery unicast sent to " << cameraIp << std::endl;
-                                unicastTriggered = true;
-                                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                            }
-                        }
-                    }
-
-                    if (!unicastTriggered) {
-                        std::cout << "[VimbaXFrameSource] Strategy 4:   No explicit unicast discovery feature found — falling back to DeviceUpdateList" << std::endl;
-                    }
-
-                    // Trigger unicast re-scan on this interface
-                    FeaturePtr updateFeature;
-                    if (iface->GetFeatureByName("DeviceUpdateList", updateFeature) == VmbErrorSuccess) {
-                        updateFeature->RunCommand();
-                        // Poll IsCommandDone up to 2000ms; fall back to fixed wait if feature absent
-                        FeaturePtr doneFeature;
-                        bool completed = false;
-                        auto waitStart = std::chrono::steady_clock::now();
-                        if (iface->GetFeatureByName("IsCommandDone", doneFeature) == VmbErrorSuccess) {
-                            while (!completed &&
-                                   std::chrono::duration_cast<std::chrono::milliseconds>(
-                                       std::chrono::steady_clock::now() - waitStart).count() < 2000) {
-                                bool val = false;
-                                if (doneFeature->GetValue(val) == VmbErrorSuccess && val)
-                                    completed = true;
-                                else
-                                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                            }
-                            std::cout << "[VimbaXFrameSource] Strategy 4:   DeviceUpdateList "
-                                      << (completed ? "completed" : "timed out — proceeding anyway") << std::endl;
-                        } else {
-                            // IsCommandDone not available — just wait
-                            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                            std::cout << "[VimbaXFrameSource] Strategy 4:   DeviceUpdateList wait done (IsCommandDone unavailable)" << std::endl;
-                        }
-                    } else {
-                        std::cout << "[VimbaXFrameSource] Strategy 4:   DeviceUpdateList not available on this interface" << std::endl;
-                    }
-
-                    // Need DeviceSelector for both range fallback and the per-slot loop — get it once
-                    FeaturePtr deviceSelectorFeature;
-                    bool hasSelectorFeature =
-                        (iface->GetFeatureByName("DeviceSelector", deviceSelectorFeature) == VmbErrorSuccess);
-
-                    // Determine number of devices via DeviceCount (preferred) or DeviceSelector range
-                    VmbInt64_t devMin = 0, devMax = -1;
-                    FeaturePtr deviceCountFeature;
-                    if (iface->GetFeatureByName("DeviceCount", deviceCountFeature) == VmbErrorSuccess) {
-                        VmbInt64_t count = 0;
-                        if (deviceCountFeature->GetValue(count) == VmbErrorSuccess && count > 0) {
-                            devMax = count - 1;
-                            std::cout << "[VimbaXFrameSource] Strategy 4:   DeviceCount=" << count << std::endl;
-                        } else {
-                            std::cout << "[VimbaXFrameSource] Strategy 4:   DeviceCount=" << count << " — no devices on this interface after rescan" << std::endl;
-                            continue;
-                        }
-                    } else if (hasSelectorFeature) {
-                        // Fall back to DeviceSelector range
-                        if (deviceSelectorFeature->GetRange(devMin, devMax) != VmbErrorSuccess) {
-                            std::cout << "[VimbaXFrameSource] Strategy 4:   DeviceSelector range query failed and DeviceCount unavailable — no devices visible on this interface" << std::endl;
-                            continue;
-                        }
-                    } else {
-                        std::cout << "[VimbaXFrameSource] Strategy 4:   DeviceSelector not available — skipping interface" << std::endl;
-                        continue;
-                    }
-
-                    if (devMax < devMin) {
-                        std::cout << "[VimbaXFrameSource] Strategy 4:   No devices found on interface after rescan" << std::endl;
-                        continue;
-                    }
-                    std::cout << "[VimbaXFrameSource] Strategy 4:   Scanning device slots [" << devMin << ".." << devMax << "]..." << std::endl;
-
-                    if (!hasSelectorFeature) {
-                        std::cout << "[VimbaXFrameSource] Strategy 4:   DeviceSelector not available — cannot iterate slots" << std::endl;
-                        continue;
-                    }
-
-                    for (VmbInt64_t devIdx = devMin; devIdx <= devMax; ++devIdx) {
-                        if (deviceSelectorFeature->SetValue(devIdx) != VmbErrorSuccess) continue;
-
-                        FeaturePtr ipFeature;
-                        if (iface->GetFeatureByName("GevDeviceIPAddress", ipFeature) != VmbErrorSuccess) continue;
-
-                        VmbInt64_t devIp = 0;
-                        if (ipFeature->GetValue(devIp) != VmbErrorSuccess) continue;
-
-                        std::cout << "[VimbaXFrameSource] Strategy 4:   slot " << devIdx << " ip="
-                                  << ((devIp>>24)&0xFF) << "." << ((devIp>>16)&0xFF)
-                                  << "." << ((devIp>>8)&0xFF) << "." << (devIp&0xFF) << std::endl;
-
-                        if (devIp != targetIpInt) continue;
-
-                        std::cout << "[VimbaXFrameSource] Strategy 4: IP match at device slot " << devIdx << std::endl;
-
-                        // Retrieve the GenTL device ID
-                        FeaturePtr idFeature;
-                        if (iface->GetFeatureByName("DeviceID", idFeature) != VmbErrorSuccess) {
-                            std::cerr << "[VimbaXFrameSource] Strategy 4: DeviceID feature not available" << std::endl;
-                            continue;
-                        }
-
-                        std::string cameraId;
-                        if (idFeature->GetValue(cameraId) != VmbErrorSuccess) continue;
-
-                        // Look up the camera object by its ID
-                        CameraPtr candidate;
-                        if (system_.GetCameraByID(cameraId.c_str(), candidate) != VmbErrorSuccess) {
-                            std::cerr << "[VimbaXFrameSource] Strategy 4: IP matched (ID=" << cameraId
-                                      << ") but GetCameraByID failed — camera may not be fully discovered yet" << std::endl;
-                            continue;
-                        }
-
-                        // Double-check: verify MAC and/or serial to guard against IP collisions
-                        bool macOk = false, serialOk = false;
-
-                        if (!cameraSerial.empty()) {
-                            std::string ser;
-                            if (candidate->GetSerialNumber(ser) == VmbErrorSuccess)
-                                serialOk = (ser == cameraSerial);
-                        }
-
-                        if (!interfaceIdOrMac.empty()) {
-                            FeaturePtr macFeat;
-                            if (candidate->GetFeatureByName("GevDeviceMACAddress", macFeat) == VmbErrorSuccess) {
-                                VmbInt64_t macValue = 0;
-                                if (macFeat->GetValue(macValue) == VmbErrorSuccess) {
-                                    std::ostringstream oss;
-                                    oss << std::hex << std::setfill('0') << std::uppercase;
-                                    oss << std::setw(2) << ((macValue >> 40) & 0xFF) << ":"
-                                        << std::setw(2) << ((macValue >> 32) & 0xFF) << ":"
-                                        << std::setw(2) << ((macValue >> 24) & 0xFF) << ":"
-                                        << std::setw(2) << ((macValue >> 16) & 0xFF) << ":"
-                                        << std::setw(2) << ((macValue >> 8)  & 0xFF) << ":"
-                                        << std::setw(2) << (macValue & 0xFF);
-                                    macOk = (oss.str() == interfaceIdOrMac);
-                                }
-                            }
-                            if (!macOk) {
-                                std::string macNoSep;
-                                for (char ch : interfaceIdOrMac)
-                                    if (ch != ':' && ch != '-') macNoSep += std::toupper((unsigned char)ch);
-                                macOk = (cameraId == "DEV_" + macNoSep);
-                            }
-                        }
-
-                        bool noVerifyCriteria = cameraSerial.empty() && interfaceIdOrMac.empty();
-                        if (noVerifyCriteria || macOk || serialOk) {
-                            camera_ = candidate;
-                            std::cout << "[VimbaXFrameSource] ✓ Strategy 4: matched camera by IP " << cameraIp
-                                      << " (ID=" << cameraId << ")";
-                            if (macOk)    std::cout << " [MAC verified]";
-                            if (serialOk) std::cout << " [serial verified]";
-                            std::cout << std::endl;
-                            break;
-                        } else {
-                            std::cerr << "[VimbaXFrameSource] Strategy 4: IP matched (ID=" << cameraId
-                                      << ") but MAC/serial verification failed — skipping" << std::endl;
-                        }
-                    }
-                }
-            }
+        // b) Bare-IP open via VimbaX transport layer
+        //    OpenCameraByID both locates and opens the camera in one call, so we
+        //    return early to skip the camera_->Open() below (it is already open).
+        std::cout << "[VimbaXFrameSource] Strategy 4: Trying OpenCameraByID(ip='"
+                  << cameraIp << "')..." << std::endl;
+        VmbErrorType s4err = system_.OpenCameraByID(cameraIp.c_str(), VmbAccessModeFull, camera_);
+        if (s4err == VmbErrorSuccess) {
+            std::cout << "[VimbaXFrameSource] ✓ Strategy 4: Opened camera via bare IP" << std::endl;
+            // Camera is already open — skip camera_->Open() and go straight to frame setup
+            return ensurePreallocFrame();
         }
+        std::cerr << "[VimbaXFrameSource] ✗ Strategy 4: OpenCameraByID failed (err=" << s4err << ")" << std::endl;
     }
 
     if (!camera_) {

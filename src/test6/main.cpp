@@ -25,6 +25,8 @@
 #include <algorithm>
 #include <cctype>
 
+#include "VimbaXUnicastDiscovery.h"
+
 #include <liblbt/camera_manager.h>
 #include <liblbt/api/api_models.h>
 
@@ -245,9 +247,37 @@ int main(int argc, char* argv[]) {
         std::cout << std::endl;
     }
 
+    // ------------------------------------------------------------------
+    // 2. GVCP unicast pre-check (pure C++, no VimbaX SDK)
+    //    Sends a GVCP DISCOVERY_CMD to each configured camera IP and
+    //    reports whether the camera responds on the network level before
+    //    any VimbaX SDK call is made.
+    // ------------------------------------------------------------------
+    std::cout << "\n=== [test6] GVCP unicast pre-check (UDP port 3956) ===" << std::endl;
+    for (const auto& cam : cameras) {
+        if (cam.cameraType != "TYPE_CAM_VIMBA") continue;
+        if (!args.targetCamUID.empty() && cam.camUID != args.targetCamUID) continue;
+        if (!cam.ip || cam.ip->empty()) {
+            std::cout << "  " << cam.camUID << ": no IP configured — skipping probe\n";
+            continue;
+        }
+        std::cout << "  Probing " << cam.camUID << " (ip=" << *cam.ip << ") ... " << std::flush;
+        const auto gev = VimbaXUnicastDiscovery::probe(*cam.ip);
+        if (gev.responded) {
+            std::cout << "DISCOVERY_ACK";
+            if (!gev.fromIp.empty())    std::cout << "  from="   << gev.fromIp;
+            if (!gev.deviceIp.empty())  std::cout << "  devIP="  << gev.deviceIp;
+            if (!gev.deviceMac.empty()) std::cout << "  MAC="    << gev.deviceMac;
+            if (!gev.subnet.empty())    std::cout << "  subnet=" << gev.subnet;
+            std::cout << "\n";
+        } else {
+            std::cout << "NO RESPONSE (camera offline or UDP:3956 blocked)\n";
+        }
+    }
+
 #ifdef VIMBAX_ENABLED
     // ------------------------------------------------------------------
-    // 2. Start VimbaX system directly — skip broadcast autodiscovery
+    // 3. Start VimbaX system directly — skip broadcast autodiscovery
     //    (We do NOT go through CameraManagerVimbax::startup() to avoid
     //     the 1-second GigE broadcast wait and background discovery thread.)
     // ------------------------------------------------------------------
@@ -275,7 +305,7 @@ int main(int argc, char* argv[]) {
     std::cout << "[test6] VimbaX started successfully" << std::endl;
 
     // ------------------------------------------------------------------
-    // 3. Connect to TYPE_CAM_VIMBA cameras
+    // 4. Connect to TYPE_CAM_VIMBA cameras
     //    Strategy:
     //      a) cam.ip present → unicast GVCP injection on each GEV interface
     //                          → retrieve GenTL camera ID from device list
