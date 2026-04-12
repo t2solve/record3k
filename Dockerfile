@@ -87,5 +87,4 @@ RUN cp /app/entrypoint.sh /app/bin/ && chmod +x /app/bin/entrypoint.sh
 
 # Run the application from its own directory (required for relative path lookups)
 WORKDIR /app/bin
-#CMD ["./apiserver"]
-CMD ["./entrypoint.sh", "apiserver"]
+CMD ["./entrypoint.sh", "./apiserver"]

@@ -16,15 +16,31 @@
 #   podman-compose down                # stop and remove containers
 #
 # Quick-start (seed data directories once):
-#   mkdir -p data/{cameras,calibrations,pipelines,records,files,studies}
+#   mkdir -p data/{cameras,calibrations,pipelines,records,files,studies} logs
 #   cp -r config/examples/intialrun/data/* data/
 #   podman-compose up --build
 #   # UI: https://localhost:3000
 #
 # GPU notes:
-#   podman-compose does not honour the `deploy.resources` block used by
-#   Docker Compose.  GPU devices are passed via the `devices` key instead
-#   (see the `api` service below).  Adjust device paths for your system:
+#   The `devices` key below passes the kernel device nodes, but CUDA *also*
+#   needs the host NVIDIA driver userspace libraries injected — this is what
+#   `podman run --gpus all` does via the NVIDIA Container Runtime hook.
+#
+#   One-time host setup (requires nvidia-container-toolkit installed):
+#
+#     # Option A — CDI (recommended, Podman 4.1+):
+#     sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+#
+#     # Option B — configure as Podman OCI hook (rootful):
+#     sudo nvidia-ctk runtime configure --runtime=podman
+#     # or for rootless:
+#     nvidia-ctk runtime configure --runtime=podman \
+#       --config ~/.config/containers/containers.conf
+#
+#   After either option the NVIDIA_VISIBLE_DEVICES env var (set below) will
+#   cause the hook to inject the driver libraries automatically.
+#
+#   Manual device paths (kept as fallback for very old toolkit versions):
 #     /dev/nvidia0        — first GPU
 #     /dev/nvidiactl      — NVIDIA control device
 #     /dev/nvidia-uvm     — unified memory (required for CUDA)
@@ -51,19 +67,26 @@ services:
     # stack so VimbaX multicast/broadcast packets reach the physical NIC.
     network_mode: host
 
-    # NVIDIA GPU access — podman passes GPU devices directly.
-    # Adjust or add device paths to match your system (see header notes).
+    # NVIDIA GPU access via CDI (Container Device Interface).
+    # CDI injects both the device nodes AND the host driver libraries (.so files).
+    #
+    # CDI must be generated once on the host:
+    #   sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+    # Verify:  nvidia-ctk cdi list   (should show nvidia.com/gpu=all)
     devices:
-      - /dev/nvidia0:/dev/nvidia0
-      - /dev/nvidiactl:/dev/nvidiactl
-      - /dev/nvidia-uvm:/dev/nvidia-uvm
-      - /dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools
+      - nvidia.com/gpu=all
 
     environment:
+      # NVIDIA_VISIBLE_DEVICES is read by the CDI / OCI hook to select GPUs.
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
       # Override if your GigE NIC or camera subnet alias differs from the defaults
       # defined in entrypoint.sh.
       CAMERA_NIC: bond0
       CAMERA_SUBNET_ALIAS: 172.18.227.1/24
+      # Log file directory inside the container (matches drogon.config.json log_path).
+      # Override with LOG_PATH=/some/other/path if needed.
+      LOG_PATH: /app/bin/logs
 
     volumes:
       # Persist recorded data and configuration outside the container so it
@@ -75,11 +98,13 @@ services:
       - ./data/records:/app/bin/data/records
       - ./data/files:/app/bin/data/files
       - ./data/studies:/app/bin/data/studies
+      # API server log files — persisted on the host for inspection after restarts.
+      - ./logs:/app/bin/logs
 
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
       interval: 10s
       timeout: 5s
       retries: 5

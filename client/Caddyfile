@@ -2,14 +2,23 @@
     # /srv/client is the mount point used by Docker Compose (see compose.yaml).
     # For local dev (caddy run from inside client/), change this to: root * .
     root * /srv/client
-    file_server browse
-    header Cache-Control "no-cache, no-store, must-revalidate"
 
-    # Proxy API calls to the Drogon backend — eliminates CORS and avoids
-    # exposing port 8080 directly to the network.
-    reverse_proxy /api/* localhost:8080
+    # Human-readable access/error log — visible via `podman-compose logs client`.
+    log {
+        output stderr
+        format console
+    }
 
-    # Self-signed TLS for LAN use (no external cert needed).
-    # Browsers will show a one-time warning; accept and continue.
-    tls internal
+    # Proxy /api/* to Drogon, stripping the /api prefix so drogon routes
+    # (e.g. /info/cameras/list) are reached correctly.
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy localhost:8080
+    }
+
+    # Serve static web files for everything else.
+    handle {
+        file_server browse
+        header Cache-Control "no-cache, no-store, must-revalidate"
+    }
 }

@@ -3,6 +3,7 @@
 #ifdef API_ENABLED
 #include <drogon/drogon.h>
 #include <trantor/utils/Logger.h>
+#include <trantor/utils/AsyncFileLogger.h>
 #include <api/runtime/app_config.h>
 #include <api/runtime/info_data_manager.h>
 #include <liblbt/file_manager.h>
@@ -87,6 +88,41 @@ int main(int argc, char* argv[])
     LOG_INFO << "Log level: INFO (default)";
 #endif
     
+    // -----------------------------------------------------------------------
+    // File logging — AsyncFileLogger writes trantor log output to a rotating
+    // file alongside stdout.  Path priority: LOG_PATH env > drogon custom
+    // config "log_path" key > default ./logs.
+    // The logger object must stay alive for the entire process lifetime.
+    // -----------------------------------------------------------------------
+    static trantor::AsyncFileLogger asyncFileLogger;
+    {
+        std::string logPath = "./logs";
+        if (const char* envLogPath = std::getenv("LOG_PATH")) {
+            logPath = envLogPath;
+        } else {
+            try {
+                auto customConfig = drogon::app().getCustomConfig();
+                if (customConfig.isMember("log_path"))
+                    logPath = customConfig["log_path"].asString();
+            } catch (...) {}
+        }
+        std::filesystem::create_directories(logPath);
+        asyncFileLogger.setFileName("apiserver", ".log", logPath);
+        asyncFileLogger.setFileSizeLimit(50 * 1024 * 1024);  // rotate at 50 MB
+        asyncFileLogger.setMaxFiles(10);                      // keep last 10 files
+        asyncFileLogger.setSwitchOnLimitOnly(true);
+        asyncFileLogger.startLogging();
+        // Tee: write to the rotating file AND to stdout so `podman logs` still works.
+        trantor::Logger::setOutputFunction(
+            [](const char* msg, const uint64_t len) {
+                asyncFileLogger.output(msg, len);
+                fwrite(msg, 1, len, stdout);
+            },
+            [](){ asyncFileLogger.flush(); fflush(stdout); }
+        );
+        LOG_INFO << "File logging started: " << logPath << "/apiserver*.log";
+    }
+
     // Register signal handlers for graceful shutdown
     std::signal(SIGINT, signalHandler);   // Ctrl+C
     std::signal(SIGTERM, signalHandler);  // Termination signal
@@ -266,10 +302,10 @@ int main(int argc, char* argv[])
             return;
         }
         
-        // Allow access to documentation endpoints without authentication
+        // Allow access to documentation and health endpoints without authentication
         std::string path = req->path();
-        if (path == "/swagger" || path == "/openapi.json") {
-            LOG_DEBUG << "Allowing unauthenticated access to documentation: " << path;
+        if (path == "/swagger" || path == "/openapi.json" || path == "/api/health") {
+            LOG_DEBUG << "Allowing unauthenticated access to: " << path;
             accb();
             return;
         }
@@ -309,6 +345,18 @@ int main(int argc, char* argv[])
         resp->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     });
     
+    // Health check endpoint — used by podman-compose to determine when the api
+    // service is ready before starting the client (Caddy) container.
+    drogon::app().registerHandler("/api/health",
+        [](const drogon::HttpRequestPtr&,
+           std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            Json::Value body;
+            body["status"] = "ok";
+            callback(drogon::HttpResponse::newHttpJsonResponse(body));
+        },
+        {drogon::Get}
+    );
+
     LOG_INFO << "Starting Drogon server; swagger (if enabled) at /swagger and spec at /openapi.json";
     LOG_INFO << "CORS enabled for browser access (with preflight support)";
     LOG_INFO << "Press Ctrl+C to stop the server";
