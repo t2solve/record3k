@@ -267,6 +267,47 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
         return false;
     }
 
+    // --- GigE stream packet size negotiation ---
+    // Run GVSPAdjustPacketSize so the transport layer auto-negotiates the largest
+    // safe packet size for this network path.  Without this, the camera may send
+    // frames in packets that are larger than the NIC/switch MTU, causing silent
+    // packet loss and AcquireSingleImage timeouts.
+    {
+        StreamPtrVector streams;
+        if (camera_->GetStreams(streams) == VmbErrorSuccess && !streams.empty()) {
+            FeaturePtr pktFeature;
+            if (streams[0]->GetFeatureByName("GVSPAdjustPacketSize", pktFeature) == VmbErrorSuccess) {
+                VmbErrorType pktErr = pktFeature->RunCommand();
+                if (pktErr == VmbErrorSuccess) {
+                    // Wait for the command to complete
+                    bool isDone = false;
+                    for (int i = 0; i < 50 && !isDone; ++i) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                        pktFeature->IsCommandDone(isDone);
+                    }
+                    std::cout << "[VimbaXFrameSource] GVSPAdjustPacketSize done" << std::endl;
+                } else {
+                    std::cout << "[VimbaXFrameSource] GVSPAdjustPacketSize returned err=" << pktErr << " (non-fatal)" << std::endl;
+                }
+            }
+        }
+    }
+
+    // --- Disable hardware trigger so the camera runs in free-run mode ---
+    // If TriggerMode is left On from a previous session or firmware default,
+    // AcquireSingleImage blocks forever waiting for a hardware trigger signal.
+    {
+        FeaturePtr trigFeature;
+        if (camera_->GetFeatureByName("TriggerMode", trigFeature) == VmbErrorSuccess) {
+            VmbErrorType trigErr = trigFeature->SetValue("Off");
+            if (trigErr == VmbErrorSuccess) {
+                std::cout << "[VimbaXFrameSource] TriggerMode set to Off" << std::endl;
+            } else {
+                std::cout << "[VimbaXFrameSource] TriggerMode SetValue('Off') err=" << trigErr << " (non-fatal)" << std::endl;
+            }
+        }
+    }
+
     std::cout << "[VimbaXFrameSource] Ensuring preallocated frame..." << std::endl;
     // Pre-allocate a single frame buffer for AcquireSingleImage
     bool result = ensurePreallocFrame();
@@ -291,18 +332,30 @@ void VimbaXFrameSource::shutdown() {
 }
 
 std::unique_ptr<FrameMemoryObject> VimbaXFrameSource::nextFrame() {
-    int frameTimeoutMs = 1000;
+    // GigE cameras can occasionally drop a packet — retry a few times before
+    // giving up so that transient network hiccups don't abort the whole recording.
+    static constexpr int frameTimeoutMs = 3000;
+    static constexpr int maxRetries = 3;
+
     if (!ready_) return nullptr;
     if (!ensurePreallocFrame()) return nullptr;
 
-    // Blocking grab with timeout
-    VmbErrorType err = camera_->AcquireSingleImage(preallocFrame_, frameTimeoutMs, FrameAllocationMode::FrameAllocation_AllocAndAnnounceFrame);
-    if (err != VmbErrorSuccess) {
+    VmbErrorType err = VmbErrorSuccess;
+    for (int attempt = 0; attempt < maxRetries; ++attempt) {
+        err = camera_->AcquireSingleImage(preallocFrame_, frameTimeoutMs, FrameAllocationMode::FrameAllocation_AllocAndAnnounceFrame);
+        if (err == VmbErrorSuccess) break;
+
         if (err == VmbErrorTimeout) {
-            if (debug_) qDebug() << "[VimbaXFrameSource] AcquireSingleImage timeout";
+            std::cout << "[VimbaXFrameSource] AcquireSingleImage timeout (attempt "
+                      << (attempt + 1) << "/" << maxRetries << ")" << std::endl;
         } else {
             qWarning() << "[VimbaXFrameSource] AcquireSingleImage failed, err=" << err;
+            return nullptr; // non-timeout errors are not worth retrying
         }
+    }
+
+    if (err != VmbErrorSuccess) {
+        std::cout << "[VimbaXFrameSource] AcquireSingleImage failed after " << maxRetries << " attempts" << std::endl;
         return nullptr;
     }
 

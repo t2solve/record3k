@@ -237,6 +237,8 @@ void RecordManager::recordingLoop() {
         double avgFPS = 0.0;
         const double alpha = 0.1; // Exponential moving average factor
         int frameCounter = 0;
+        int consecutiveFailures = 0;
+        const int maxConsecutiveFailures = 5; // tolerate transient GigE drops
         
         // Log start information
         std::stringstream startMsg;
@@ -267,15 +269,24 @@ void RecordManager::recordingLoop() {
             // Acquire frame
             auto frame = m_config.frameSource->nextFrame();
             if (!frame) {
-                std::string errMsg = "Failed to acquire frame, stopping";
-                std::cerr << "[RecordManager] " << errMsg << std::endl;
-                logToFile("ERROR: " + errMsg);
-                m_state = State::FAILURE;
-                if (!m_config.cameraUID.empty()) {
-                    RecordManagerLocker::instance().updateState(m_config.cameraUID, "error", "Failed to acquire frame");
+                consecutiveFailures++;
+                std::cerr << "[RecordManager] Failed to acquire frame ("
+                          << consecutiveFailures << "/" << maxConsecutiveFailures << ")" << std::endl;
+                logToFile("WARN: Failed to acquire frame (" + std::to_string(consecutiveFailures)
+                          + "/" + std::to_string(maxConsecutiveFailures) + ")");
+                if (consecutiveFailures >= maxConsecutiveFailures) {
+                    std::string errMsg = "Too many consecutive frame failures, stopping";
+                    std::cerr << "[RecordManager] " << errMsg << std::endl;
+                    logToFile("ERROR: " + errMsg);
+                    m_state = State::FAILURE;
+                    if (!m_config.cameraUID.empty()) {
+                        RecordManagerLocker::instance().updateState(m_config.cameraUID, "error", "Failed to acquire frame");
+                    }
+                    break;
                 }
-                break;
+                continue;
             }
+            consecutiveFailures = 0;
             
             // Process frame through pipeline
             try {

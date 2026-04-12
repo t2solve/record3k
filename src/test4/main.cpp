@@ -168,29 +168,50 @@
 using namespace lbt;
 
 int main(int argc, char* argv[]) {
-    std::cout << "=== RecordManager Example ===" << std::endl;
-    
-    // 1. Create a frame source (USB camera)
-    auto frameSource = std::make_shared<OpenCVFrameSource>(0);
-    
-    if (!frameSource->isReady()) {
-        std::cerr << "Failed to open camera device 0" << std::endl;
-        std::cerr << "Available cameras:" << std::endl;
-        OpenCVFrameSource::listAvailableCameras();
+    std::cout << "=== RecordManager Example (VimbaX) ===" << std::endl;
+
+    // --- Opencv Camera Source Commented out 
+    //auto frameSource = std::make_shared<OpenCVFrameSource>(0);
+
+    // --- VimbaX camera parameters ---
+    /// Adjust these to match your camera; leave serial empty to match by MAC only.
+    const std::string ctiPath   = "../../vimbax/cti/VimbaGigETL.cti";
+    const std::string serial    = "";                  // e.g. "02-2611A-07380"
+    const std::string macOrIface = "00:0F:31:03:38:D4"; // Camera MAC → maps to DEV_000F310338D4
+    const std::string cameraIp  = "192.168.178.99";
+
+    // 0. Start VimbaX system (manages VmbSystem lifetime)
+    auto& vmbMgr = CameraManagerVimbax::getInstance();
+    std::cout << "Starting CameraManagerVimbax..." << std::endl;
+    if (!vmbMgr.startup(ctiPath)) {
+        std::cerr << "Failed to start VimbaX camera system" << std::endl;
         return -1;
     }
-    
-    std::cout << "Camera opened successfully" << std::endl;
+    // Wait for GigE broadcast discovery
+    std::cout << "Waiting 5s for camera discovery..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+
+    // 1. Create VimbaXFrameSource
+    auto frameSource = std::make_shared<VimbaXFrameSource>(serial, macOrIface, /*debug=*/true, cameraIp);
+
+    if (!frameSource->isReady()) {
+        std::cerr << "VimbaXFrameSource not ready — camera not found or could not be opened" << std::endl;
+        vmbMgr.shutdown();
+        return -1;
+    }
+
+    std::cout << "VimbaX camera opened successfully" << std::endl;
     
     // 2. Create a processing pipeline
     std::vector<std::shared_ptr<ProcessStep>> pipeline;
     std::vector<FilterConfig> configs;
     ProcessingMode mode = ProcessingMode::CUDA_PREFERRED;
+
     
     // Add a frame writer step
     pipeline.push_back(ProcessStepFactory::createFrameWriter(mode));
     FilterConfig frameWriterConfig;
-    frameWriterConfig.setParameter("output_dir", "/tmp/record3k/file-rec-test-001/frames");
+    frameWriterConfig.setParameter("output_dir", "/tmp/record3k/file-rec-test-vimba-001/frames");
     frameWriterConfig.setParameter("format", "jpg");
     configs.push_back(frameWriterConfig);
     
@@ -206,8 +227,11 @@ int main(int argc, char* argv[]) {
     recordConfig.pipeline = pipeConfig;
     recordConfig.totalTimeSeconds = 20.0;  // 20 seconds
     recordConfig.targetFPS = 10.0;          // 10 FPS
-    recordConfig.recordUID = "test-001";
+    recordConfig.recordUID = "test-vimba-001";
     recordConfig.outputDir = "/tmp/record3k";
+    
+    //set record log mode to DEBUG to save raw frames, PRODUCTION to skip frame saving
+    recordConfig.logMode = ResultLogger::LogMode::DEBUG; // Set to DEBUG to save raw frames, PRODUCTION to skip frame saving
     
     // Optional: add calibration and study files (if they exist)
     // recordConfig.calibrationFile = "path/to/calibration.xml";
@@ -262,5 +286,8 @@ int main(int argc, char* argv[]) {
     }
     
     std::cout << "\n=== Example Complete ===" << std::endl;
+
+    // Shut down VimbaX cleanly
+    vmbMgr.shutdown();
     return 0;
 }
