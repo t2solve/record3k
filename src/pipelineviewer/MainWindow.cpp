@@ -33,6 +33,27 @@ MainWindow::MainWindow(QWidget* parent)
     // Create playback timer
     playbackTimer_ = new QTimer(this);
     connect(playbackTimer_, &QTimer::timeout, this, &MainWindow::onPlaybackTick);
+
+    // Resize debounce timer: prevents running pipeline on every resize pixel
+    resizeDebounceTimer_ = new QTimer(this);
+    resizeDebounceTimer_->setSingleShot(true);
+    resizeDebounceTimer_->setInterval(150); // ms after last resize event
+    connect(resizeDebounceTimer_, &QTimer::timeout, this, [this]() {
+        int idx = stepList_->currentRow();
+        if (currentFrame_) {
+            if (idx >= 0) showBeforeAfter(idx);
+            else {
+                auto mat = currentFrame_->getCpuMat();
+                QImage img = matToQImage(mat);
+                QSize beforeSize = beforeLabel_->size();
+                QSize afterSize = afterLabel_->size();
+                if (beforeSize.width() <= 0 || beforeSize.height() <= 0) beforeSize = QSize(800,600);
+                if (afterSize.width() <= 0 || afterSize.height() <= 0) afterSize = QSize(800,600);
+                beforeLabel_->setPixmap(QPixmap::fromImage(img).scaled(beforeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                afterLabel_->setPixmap(QPixmap::fromImage(img).scaled(afterSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            }
+        }
+    });
     
     apiClient_ = std::make_unique<ApiClient>(this);
     apiClient_->setBaseUrl(settings_.value("api/url", "http://127.0.0.1:8080").toString());
@@ -477,21 +498,8 @@ void MainWindow::onFrameSliderChanged(int value) {
 
 void MainWindow::resizeEvent(QResizeEvent* event) {
     QMainWindow::resizeEvent(event);
-    int idx = stepList_->currentRow();
-    if (currentFrame_) {
-        if (idx >= 0) showBeforeAfter(idx);
-        else {
-            // rescale original view
-            auto mat = currentFrame_->getCpuMat();
-            QImage img = matToQImage(mat);
-            QSize beforeSize = beforeLabel_->size();
-            QSize afterSize = afterLabel_->size();
-            if (beforeSize.width() <= 0 || beforeSize.height() <= 0) beforeSize = QSize(800,600);
-            if (afterSize.width() <= 0 || afterSize.height() <= 0) afterSize = QSize(800,600);
-            beforeLabel_->setPixmap(QPixmap::fromImage(img).scaled(beforeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-            afterLabel_->setPixmap(QPixmap::fromImage(img).scaled(afterSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-        }
-    }
+    // Debounce: restart the timer so showBeforeAfter only runs once after resizing stops
+    resizeDebounceTimer_->start();
 }
 
 void MainWindow::onStepSelectionChanged() {
@@ -774,29 +782,35 @@ void MainWindow::onDownloadRecord() {
             extractProgress->show();
             QApplication::processEvents(); // Force UI update
             
-            // Extract tar.gz
+            // Extract tar.gz asynchronously via QProcess (avoids blocking the UI/event loop)
             statusBar()->showMessage("Extracting archive...");
-            QString cmd = QString("cd \"%1\" && tar -xzf \"%2\"")
-                .arg(destDir, QFileInfo(destFile).fileName());
-            int result = system(cmd.toStdString().c_str());
-            
-            extractProgress->close();
-            extractProgress->deleteLater();
-            
-            if (result != 0) {
-                QMessageBox::critical(this, "Error", "Failed to extract archive.");
-                return;
-            }
-            
-            // Find extracted directory (file-rec-{recordUID})
-            QString extractedDir = destDir + "/file-rec-" + recordUID;
-            if (!QDir(extractedDir).exists()) {
-                QMessageBox::warning(this, "Error", "Extracted archive but expected directory 'file-rec-" + recordUID + "' not found.");
-                return;
-            }
-            
-            loadRecordData(recordUID, extractedDir);
-            recordsDialog_->close();
+            auto* tarProcess = new QProcess(this);
+            tarProcess->setWorkingDirectory(destDir);
+            connect(tarProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                this, [this, tarProcess, extractProgress, destDir, destFile, recordUID](int exitCode, QProcess::ExitStatus) {
+                    tarProcess->deleteLater();
+                    extractProgress->close();
+                    extractProgress->deleteLater();
+
+                    if (exitCode != 0) {
+                        QMessageBox::critical(this, "Error",
+                            QString("Failed to extract archive (tar exit %1):\n%2")
+                                .arg(exitCode)
+                                .arg(QString::fromLocal8Bit(tarProcess->readAllStandardError())));
+                        return;
+                    }
+
+                    QString extractedDir = destDir + "/file-rec-" + recordUID;
+                    if (!QDir(extractedDir).exists()) {
+                        QMessageBox::warning(this, "Error",
+                            "Extracted archive but expected directory 'file-rec-" + recordUID + "' not found.");
+                        return;
+                    }
+
+                    loadRecordData(recordUID, extractedDir);
+                    recordsDialog_->close();
+                });
+            tarProcess->start("tar", {QStringLiteral("-xzf"), QFileInfo(destFile).fileName()});
         }
     );
 }
@@ -1067,8 +1081,8 @@ void MainWindow::onPlaybackTick() {
         uint64_t deltaMs = (nextTs - currentTs) / 1000000; // ns to ms
         delayMs = static_cast<int>(deltaMs / playbackSpeed_);
         
-        // Clamp to reasonable range
-        if (delayMs < 1) delayMs = 1;
+        // Clamp to reasonable range: min 16ms (~60fps max) to avoid starving the event loop
+        if (delayMs < 16) delayMs = 16;
         if (delayMs > 5000) delayMs = 33; // Fallback if timestamps are wrong
     }
     

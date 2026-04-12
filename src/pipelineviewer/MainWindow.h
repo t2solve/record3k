@@ -14,6 +14,7 @@
 #include <QSettings>
 #include <QTimer>
 #include <QComboBox>
+#include <QProcess>
 #include <memory>
 #include <liblbt/pipeline_config_loader.h>
 #include <liblbt/disk_image_frame_source.h>
@@ -62,6 +63,7 @@ private:
     QPushButton* playPauseBtn_ {nullptr};
     QComboBox* speedCombo_ {nullptr};
     QTimer* playbackTimer_ {nullptr};
+    QTimer* resizeDebounceTimer_ {nullptr};
     bool isPlaying_ {false};
     double playbackSpeed_ {1.0};
 
