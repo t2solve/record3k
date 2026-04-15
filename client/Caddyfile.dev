@@ -1,0 +1,22 @@
+:3000 {
+    # Local development: serve files from the current directory (client/).
+    # Run with: caddy run --config Caddyfile.dev
+    root * .
+
+    log {
+        output stderr
+        format console
+    }
+
+    # Proxy /api/* to Drogon, stripping the /api prefix.
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy localhost:8080
+    }
+
+    # Serve static web files for everything else.
+    handle {
+        file_server browse
+        header Cache-Control "no-cache, no-store, must-revalidate"
+    }
+}

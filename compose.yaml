@@ -1,4 +1,7 @@
 # record3k — Podman Compose
+# OLD: podman rm -f record3k-api record3k-client 
+# RUN+BUILD: podman-compose up --build
+# LOGIN: podman exec -it record3k-api bash
 #
 # Services:
 #   api     — C++/Drogon API server (built from Dockerfile, GPU-enabled)
@@ -62,19 +65,32 @@ services:
     # NET_ADMIN is required by entrypoint.sh to add the GigE subnet IP alias.
     cap_add:
       - NET_ADMIN
+      - NET_RAW
 
     # GigE camera discovery requires the container to share the host network
     # stack so VimbaX multicast/broadcast packets reach the physical NIC.
     network_mode: host
 
-    # NVIDIA GPU access via CDI (Container Device Interface).
-    # CDI injects both the device nodes AND the host driver libraries (.so files).
+    # NVIDIA GPU access.
     #
-    # CDI must be generated once on the host:
+    # Option A — CDI (preferred, requires nvidia-container-toolkit):
     #   sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
-    # Verify:  nvidia-ctk cdi list   (should show nvidia.com/gpu=all)
+    #   nvidia-ctk cdi list   # verify nvidia.com/gpu=all appears
+    #
+    # Option B — explicit device nodes (fallback when CDI is not available):
+    #   Passes kernel device nodes only — does NOT inject CUDA userspace
+    #   libraries. NVIDIA_VISIBLE_DEVICES will be ignored without the OCI hook.
+    #
+    # Active: Option A (CDI)
     devices:
       - nvidia.com/gpu=all
+
+    # Fallback Option B (uncomment and remove Option A above if CDI is unavailable):
+    # devices:
+    #   - /dev/nvidia0
+    #   - /dev/nvidiactl
+    #   - /dev/nvidia-uvm
+    #   - /dev/nvidia-uvm-tools
 
     environment:
       # NVIDIA_VISIBLE_DEVICES is read by the CDI / OCI hook to select GPUs.

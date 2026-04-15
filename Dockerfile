@@ -1,22 +1,10 @@
 # BUILD: podman build --network=host -t recorder-3k .
-  # LOGIN: docker run --gpus all  --network=host  recorder-3k -it --name recorder-3k recorder-3k bash
-  # RUN: docker run  --gpus all  --network=host  recorder-3k
-# login: docker run --network=host  --gpus all  -it recorder-3k bash
-# podman run --rm -it --name recorder-3k --gpus all --network=host recorder-3k bash
+# RUN: podman run --rm -it --name recorder-3k --network=host recorder-3k bash
 # podman run --rm -it --name recorder-3k --gpus nvidia.com/all --network=host recorder-3k bash
-# 
-# podman run --rm -it --name recorder-3k \
-#  --network=host -v "$PWD":/app -w /app \
-# needed: export LD_LIBRARY_PATH=/app/bin:$LD_LIBRARY_PATH
-#  recorder-3k bash   # or sh
-# copy out data: docker cp dreamy_grothendieck:/app/out  .
-#podman run --rm -it --name recorder-3k --network=host --device /dev/dri \
-#  --device /dev/nvidia0 \
-#  --device /dev/nvidiactl \
-#  --device /dev/nvidia-modeset \
-#  --device /dev/nvidia-uvm \
-#  --device /dev/nvidia-uvm-tools \
-#  recorder-3k
+# DEBUG (with ping / ICMP enabled — NET_RAW cap + disable seccomp raw-socket filter):
+# podman run --rm -it --name recorder-3k --gpus nvidia.com/all --network=host --cap-add NET_RAW --security-opt seccomp=unconfined recorder-3k bash
+#
+
 FROM cuda-builder:latest 
 
 # Set environment variables to avoid timezone prompts
@@ -45,6 +33,9 @@ RUN ls -al /app/src/liblbt/include/liblbt
 
 # ONLY for debug 
 #RUN apt-get update && apt-get install -y gdb
+
+# Python3 + ping for camera debug scripting (debug_camera_network.py)
+RUN apt-get update && apt-get install -y --no-install-recommends python3 iputils-ping 
 
 #build test with production log level (INFO)
 # For debug builds, add: LOG_LEVEL=DEBUG
