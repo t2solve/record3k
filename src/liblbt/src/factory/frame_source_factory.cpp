@@ -33,8 +33,8 @@ std::unique_ptr<IFrameSource> FrameSourceFactory::createFromCameraInfo(
             return nullptr;
         }
 
-        // VimbaXFrameSource(serial, interfaceIdOrMac, debugLog, cameraIp)
-        return std::make_unique<VimbaXFrameSource>(serial, mac, debugLog, ip);
+        // VimbaXFrameSource(serial, interfaceIdOrMac, debugLog, cameraIp, targetFps)
+        return std::make_unique<VimbaXFrameSource>(serial, mac, debugLog, ip, 10.0);
 #else
         std::cerr << "[FrameSourceFactory] ERROR: VimbaX not enabled in build" << std::endl;
         return nullptr;

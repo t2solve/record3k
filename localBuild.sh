@@ -77,6 +77,8 @@ while [[ $# -gt 0 ]]; do
     --valgrind-memcheck)
       VALGRIND_MEMCHECK=1
       shift ;;
+    --no-cuda|--no-vimbax)
+      shift ;;  # these features are opt-in; absence is the default — silently ignore
     *)
       echo "Unknown option: $1" >&2
       exit 1 ;;

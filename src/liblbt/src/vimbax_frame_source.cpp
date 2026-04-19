@@ -3,6 +3,7 @@
 
 #ifdef VIMBAX_ENABLED
 
+#include <VmbC/VmbC.h>      // VmbCaptureFrameWait, VmbCaptureQueueFlush
 #include "frame_converter.h"
 #include <liblbt/vimbax_unicast_discovery.h>
 #include <QDebug>
@@ -14,13 +15,111 @@
 
 using namespace VmbCPP;
 
-// Pull-based single-shot acquisition; no observer used
+// ---------------------------------------------------------------------------
+// VimbaXFrameSource::FrameObserver
+// ---------------------------------------------------------------------------
+
+VimbaXFrameSource::FrameObserver::FrameObserver(CameraPtr cam)
+    : IFrameObserver(cam) {}
+
+void VimbaXFrameSource::FrameObserver::FrameReceived(FramePtr frame) {
+    VmbUint64_t ticks = 0;
+    // Primary: GVSP-embedded timestamp (set by camera HW at exact capture time)
+    frame->GetTimestamp(ticks);
+
+#ifdef VIMBAX_TIMESTAMP_STATS
+    const bool method1ok = (ticks != 0);
+#endif
+
+    // Fallback: camera tick counter latch (slightly later than capture -
+    // one GEV round-trip - but still on the camera's own hardware clock).
+    if (ticks == 0 && m_pCamera) {
+        FeaturePtr latchCmd, tickVal;
+        // GEV 1.x feature names (older cameras / legacy TL)
+        if (m_pCamera->GetFeatureByName("GevTimestampControlLatch", latchCmd) == VmbErrorSuccess &&
+            m_pCamera->GetFeatureByName("GevTimestampValue",        tickVal)  == VmbErrorSuccess) {
+            latchCmd->RunCommand();
+            VmbInt64_t t = 0;
+            tickVal->GetValue(t);
+            ticks = static_cast<VmbUint64_t>(t);
+        }
+        // SFNC 2.x feature names (e.g. Allied Vision Alvium with SFNC 2.7+):
+        //   TimestampLatch (Command) + TimestampLatchValue (Int64)
+        // GevTimestampControlLatch/GevTimestampValue are absent on these cameras.
+        if (ticks == 0) {
+            FeaturePtr sfncLatch, sfncVal;
+            if (m_pCamera->GetFeatureByName("TimestampLatch",      sfncLatch) == VmbErrorSuccess &&
+                m_pCamera->GetFeatureByName("TimestampLatchValue", sfncVal)   == VmbErrorSuccess) {
+                sfncLatch->RunCommand();
+                VmbInt64_t t = 0;
+                sfncVal->GetValue(t);
+                ticks = static_cast<VmbUint64_t>(t);
+            }
+        }
+    }
+
+#ifdef VIMBAX_TIMESTAMP_STATS
+    if      (method1ok)  ++statsMethod1_;
+    else if (ticks != 0) ++statsMethod2_;
+    else                 ++statsMissed_;
+#endif
+
+    std::lock_guard<std::mutex> lock(mtx_);
+    queue_.push({frame, ticks});
+    cv_.notify_one();
+}
+
+std::pair<VmbCPP::FramePtr, VmbUint64_t>
+VimbaXFrameSource::FrameObserver::waitForFrame(uint32_t timeoutMs) {
+    std::unique_lock<std::mutex> lock(mtx_);
+    if (!cv_.wait_for(lock, std::chrono::milliseconds(timeoutMs),
+                      [this] { return !queue_.empty(); }))
+        return {{}, 0};
+    auto entry = queue_.front();
+    queue_.pop();
+    return entry;
+}
+
+void VimbaXFrameSource::FrameObserver::clear() {
+    std::lock_guard<std::mutex> lock(mtx_);
+    while (!queue_.empty()) queue_.pop();
+}
+
+#ifdef VIMBAX_TIMESTAMP_STATS
+void VimbaXFrameSource::FrameObserver::logStats(const std::string& prefix) const {
+    const uint64_t m1    = statsMethod1_.load(std::memory_order_relaxed);
+    const uint64_t m2    = statsMethod2_.load(std::memory_order_relaxed);
+    const uint64_t miss  = statsMissed_.load(std::memory_order_relaxed);
+    const uint64_t total = m1 + m2 + miss;
+    auto pct = [&](uint64_t n) -> double {
+        return total > 0 ? 100.0 * static_cast<double>(n) / static_cast<double>(total) : 0.0;
+    };
+    const std::string tag = prefix.empty() ? "[VimbaXFrameSource]" : prefix;
+    std::cout << tag << " === Timestamp method stats (" << total << " frames) ==="  << std::endl;
+    std::cout << tag << "   Method 1 — GVSP-embedded (precise, zero RTT)       : "
+              << m1   << " frames (" << pct(m1)   << "%)" << std::endl;
+    std::cout << tag << "   Method 2 — GevTimestampControlLatch (one RTT later) : "
+              << m2   << " frames (" << pct(m2)   << "%)" << std::endl;
+    std::cout << tag << "   Missed  — both methods returned 0                  : "
+              << miss << " frames (" << pct(miss) << "%)" << std::endl;
+    if (m2 > 0)
+        std::cout << tag << "   WARNING: Method 2 timestamps carry a ~GEV round-trip offset."
+                  << " See doc/FRAME_TIMESTAMP_DISCUSSION.md." << std::endl;
+    if (miss > 0)
+        std::cout << tag << "   WARNING: " << miss << " frames have no camera timestamp at all."
+                  << " Downstream analysis must treat these as missing data." << std::endl;
+}
+#endif
+
+// ---------------------------------------------------------------------------
+// VimbaXFrameSource
 
 VimbaXFrameSource::VimbaXFrameSource(const std::string& cameraSerial,
                                      const std::string& interfaceIdOrMac,
                                      bool debugLog,
-                                     const std::string& cameraIp)
-    : system_(VmbSystem::GetInstance()), debug_(debugLog) {
+                                     const std::string& cameraIp,
+                                     double targetFps)
+    : system_(VmbSystem::GetInstance()), debug_(debugLog), targetFps_(targetFps) {
     std::cout << "[VimbaXFrameSource] Constructor called (serial='" << cameraSerial 
               << "', interface='" << interfaceIdOrMac << "', ip='" << cameraIp << "')" << std::endl;
     ready_ = initialize(cameraSerial, interfaceIdOrMac, cameraIp);
@@ -248,7 +347,7 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
         if (s4err == VmbErrorSuccess) {
             std::cout << "[VimbaXFrameSource] ✓ Strategy 4: Opened camera via bare IP" << std::endl;
             // Camera is already open — skip camera_->Open() and go straight to frame setup
-            return ensurePreallocFrame();
+            return startContinuousCapture();
         }
         std::cerr << "[VimbaXFrameSource] ✗ Strategy 4: OpenCameraByID failed (err=" << s4err << ")" << std::endl;
     }
@@ -308,82 +407,206 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
         }
     }
 
-    std::cout << "[VimbaXFrameSource] Ensuring preallocated frame..." << std::endl;
-    // Pre-allocate a single frame buffer for AcquireSingleImage
-    bool result = ensurePreallocFrame();
+    std::cout << "[VimbaXFrameSource] Starting continuous capture..." << std::endl;
+    bool result = startContinuousCapture();
     std::cout << "[VimbaXFrameSource] initialize() complete, result=" << result << std::endl;
     return result;
 }
 
 void VimbaXFrameSource::shutdown() {
     try {
-        if (camera_) {
-            (void)camera_->Close();
+        if (camera_ && captureStarted_) {
+            FeaturePtr feat;
+            if (camera_->GetFeatureByName("AcquisitionStop", feat) == VmbErrorSuccess)
+                feat->RunCommand();
+            // Clear observer queue before flushing so no stale frames are processed
+            if (observer_) observer_->clear();
+#ifdef VIMBAX_TIMESTAMP_STATS
+            if (observer_) observer_->logStats("[VimbaXFrameSource][shutdown]");
+#endif
+            VmbCaptureQueueFlush(camera_->GetHandle());
+            camera_->EndCapture();
+            camera_->RevokeAllFrames();
         }
+        observer_.reset();
+        framePool_.clear();
+        captureStarted_ = false;
+        if (camera_)
+            (void)camera_->Close();
     } catch (const std::exception& e) {
-        qWarning() << "[VimbaXFrameSource] Exception while closing camera:" << e.what();
+        qWarning() << "[VimbaXFrameSource] Exception during shutdown:" << e.what();
     } catch (...) {
-        qWarning() << "[VimbaXFrameSource] Unknown exception while closing camera";
+        qWarning() << "[VimbaXFrameSource] Unknown exception during shutdown";
     }
-    // Note: We don't call system_.Shutdown() here anymore since CameraManagerVimbax singleton manages system lifecycle
-    preallocFrame_.reset();
+    // Note: We don't call system_.Shutdown() — CameraManagerVimbax manages lifecycle
     camera_.reset();
     ready_ = false;
 }
 
 std::unique_ptr<FrameMemoryObject> VimbaXFrameSource::nextFrame() {
-    // GigE cameras can occasionally drop a packet — retry a few times before
-    // giving up so that transient network hiccups don't abort the whole recording.
-    static constexpr int frameTimeoutMs = 3000;
+    // DMA stream stays alive between calls — observer delivers filled frames.
+    static constexpr uint32_t frameTimeoutMs = 3000;
     static constexpr int maxRetries = 3;
 
-    if (!ready_) return nullptr;
-    if (!ensurePreallocFrame()) return nullptr;
+    if (!ready_ || !captureStarted_ || !observer_) return nullptr;
 
-    VmbErrorType err = VmbErrorSuccess;
     for (int attempt = 0; attempt < maxRetries; ++attempt) {
-        err = camera_->AcquireSingleImage(preallocFrame_, frameTimeoutMs, FrameAllocationMode::FrameAllocation_AllocAndAnnounceFrame);
-        if (err == VmbErrorSuccess) break;
-
-        if (err == VmbErrorTimeout) {
-            std::cout << "[VimbaXFrameSource] AcquireSingleImage timeout (attempt "
+        auto [frame, ticks] = observer_->waitForFrame(frameTimeoutMs);
+        if (!frame) {
+            std::cout << "[VimbaXFrameSource] CaptureFrameWait timeout (attempt "
                       << (attempt + 1) << "/" << maxRetries << ")" << std::endl;
-        } else {
-            qWarning() << "[VimbaXFrameSource] AcquireSingleImage failed, err=" << err;
-            return nullptr; // non-timeout errors are not worth retrying
+            continue;
         }
+
+        // Convert to FrameMemoryObject and attach timestamp
+        FrameMemoryObject out = FrameConverter::convertVmbFrameToMemoryObject(frame, false);
+        // ticks: raw camera hardware counter (GevTimestampTickFrequency ticks since
+        // camera power-on; for Allied Vision GigE tickFreqHz_ = 1e9, so 1 tick = 1 ns).
+        if (ticks != 0) {
+            uint64_t tsNs = static_cast<uint64_t>(
+                static_cast<double>(ticks) * 1e9 / static_cast<double>(tickFreqHz_));
+            out.setTimestampNs(tsNs);
+        } else {
+            qWarning() << "[VimbaXFrameSource] Camera timestamp unavailable (ticks=0)";
+        }
+
+        // Re-queue the slot so the DMA engine can fill it again
+        camera_->QueueFrame(frame);
+        return std::make_unique<FrameMemoryObject>(std::move(out));
     }
 
-    if (err != VmbErrorSuccess) {
-        std::cout << "[VimbaXFrameSource] AcquireSingleImage failed after " << maxRetries << " attempts" << std::endl;
-        return nullptr;
-    }
-
-    // Convert to FrameMemoryObject and attach timestamp
-    FrameMemoryObject out = FrameConverter::convertVmbFrameToMemoryObject(preallocFrame_, false);
-    VmbUint64_t tsNs = 0;
-    if (preallocFrame_->GetTimestamp(tsNs) == VmbErrorSuccess && tsNs != 0) {
-        out.setTimestampNs(static_cast<uint64_t>(tsNs));
-    } else {
-        qWarning() << "[VimbaXFrameSource] Frame timestamp is invalid; using current time.";
-        //out.touchTimestampNow();
-    }
-
-    return std::make_unique<FrameMemoryObject>(std::move(out));
+    std::cout << "[VimbaXFrameSource] CaptureFrameWait failed after " << maxRetries << " attempts" << std::endl;
+    return nullptr;
 }
 
 bool VimbaXFrameSource::isReady() const { return ready_; }
 
-bool VimbaXFrameSource::ensurePreallocFrame() {
-    if (preallocFrame_) return true;
+bool VimbaXFrameSource::startContinuousCapture() {
     if (!camera_) return false;
+
+    // 0. Enable chunk mode with the Timestamp chunk so Frame::GetTimestamp() in the
+    //    FrameObserver returns the camera's hardware-clock capture tick (Method 1).
+    //    Must happen before GetPayloadSize() because enabling chunks enlarges the
+    //    per-frame payload.  Non-fatal: if the camera does not support chunks, Method 2
+    //    (TimestampLatch fallback) takes over automatically.
+    {
+        FeaturePtr chunkModeActive;
+        if (camera_->GetFeatureByName("ChunkModeActive", chunkModeActive) == VmbErrorSuccess) {
+            if (chunkModeActive->SetValue(true) == VmbErrorSuccess) {
+                FeaturePtr chunkSelector, chunkEnable;
+                if (camera_->GetFeatureByName("ChunkSelector", chunkSelector) == VmbErrorSuccess &&
+                    camera_->GetFeatureByName("ChunkEnable",   chunkEnable)   == VmbErrorSuccess) {
+                    if (chunkSelector->SetValue("Timestamp") == VmbErrorSuccess &&
+                        chunkEnable->SetValue(true)          == VmbErrorSuccess) {
+                        std::cout << "[VimbaXFrameSource] Chunk mode ON (Timestamp chunk enabled)"
+                                     " — Method 1 timestamps will be hardware-precise" << std::endl;
+                    } else {
+                        std::cout << "[VimbaXFrameSource] ChunkSelector/ChunkEnable setup failed (non-fatal)" << std::endl;
+                    }
+                } else {
+                    std::cout << "[VimbaXFrameSource] ChunkSelector/ChunkEnable features not found (non-fatal)" << std::endl;
+                }
+            } else {
+                std::cout << "[VimbaXFrameSource] ChunkModeActive SetValue(true) failed (non-fatal)" << std::endl;
+            }
+        } else {
+            std::cout << "[VimbaXFrameSource] ChunkModeActive not found — camera may not support chunks" << std::endl;
+        }
+    }
+
+    // 1. Determine frame payload size
     VmbUint32_t payloadSize = 0;
     VmbErrorType err = camera_->GetPayloadSize(payloadSize);
     if (err != VmbErrorSuccess || payloadSize == 0) {
-        if (debug_) qWarning() << "[VimbaXFrameSource] GetPayloadSize failed:" << err;
+        qWarning() << "[VimbaXFrameSource] GetPayloadSize failed:" << err;
         return false;
     }
-    preallocFrame_.reset(new Frame(payloadSize));
+    std::cout << "[VimbaXFrameSource] Payload size = " << payloadSize << " bytes" << std::endl;
+
+    // 2. Create the frame observer (bridges async DMA callbacks to pull-based API)
+    observer_.reset(new FrameObserver(camera_));
+    VmbCPP::IFrameObserverPtr obsPtr = observer_;  // implicit VmbCPP::shared_ptr conversion
+
+    // 3. Allocate frame pool: register observer, announce each frame
+    framePool_.clear();
+    framePool_.reserve(kFramePoolSize);
+    for (size_t i = 0; i < kFramePoolSize; ++i) {
+        FramePtr frame(new Frame(payloadSize));
+        if (frame->RegisterObserver(obsPtr) != VmbErrorSuccess) {
+            qWarning() << "[VimbaXFrameSource] RegisterObserver failed for slot" << i;
+            return false;
+        }
+        err = camera_->AnnounceFrame(frame);
+        if (err != VmbErrorSuccess) {
+            qWarning() << "[VimbaXFrameSource] AnnounceFrame failed for slot" << i << "err=" << err;
+            return false;
+        }
+        framePool_.push_back(frame);
+    }
+
+    // 4. Start DMA capture engine
+    err = camera_->StartCapture();
+    if (err != VmbErrorSuccess) {
+        qWarning() << "[VimbaXFrameSource] StartCapture failed:" << err;
+        return false;
+    }
+
+    // 5. Queue all frames so the DMA engine can fill them
+    for (auto& frame : framePool_) {
+        err = camera_->QueueFrame(frame);
+        if (err != VmbErrorSuccess) {
+            qWarning() << "[VimbaXFrameSource] QueueFrame failed:" << err;
+            camera_->EndCapture();
+            return false;
+        }
+    }
+
+    // 6. Set hardware acquisition rate via camera features
+    FeaturePtr feat;
+    if (camera_->GetFeatureByName("AcquisitionFrameRateEnable", feat) == VmbErrorSuccess) {
+        if (feat->SetValue(true) == VmbErrorSuccess)
+            std::cout << "[VimbaXFrameSource] AcquisitionFrameRateEnable = true" << std::endl;
+    }
+    if (camera_->GetFeatureByName("AcquisitionFrameRate", feat) == VmbErrorSuccess) {
+        if (feat->SetValue(targetFps_) == VmbErrorSuccess)
+            std::cout << "[VimbaXFrameSource] AcquisitionFrameRate = " << targetFps_ << std::endl;
+    }
+
+    // 7. Issue AcquisitionStart command
+    if (camera_->GetFeatureByName("AcquisitionStart", feat) != VmbErrorSuccess) {
+        qWarning() << "[VimbaXFrameSource] Cannot get AcquisitionStart feature";
+        camera_->EndCapture();
+        return false;
+    }
+    err = feat->RunCommand();
+    if (err != VmbErrorSuccess) {
+        qWarning() << "[VimbaXFrameSource] AcquisitionStart command failed:" << err;
+        camera_->EndCapture();
+        return false;
+    }
+
+    captureStarted_ = true;
+    std::cout << "[VimbaXFrameSource] Continuous capture started (pool=" << kFramePoolSize
+              << ", fps=" << targetFps_ << ")" << std::endl;
+
+    // 8. Read camera tick frequency so nextFrame() can convert ticks → ns correctly.
+    //    GEV 1.x name: GevTimestampTickFrequency (absent on SFNC 2.x cameras)
+    //    SFNC 2.x name: DeviceTimestampFrequency (Allied Vision Alvium etc.)
+    //    Default 1 GHz is correct for Allied Vision GigE cameras either way.
+    FeaturePtr tickFreqFeat;
+    if (camera_->GetFeatureByName("GevTimestampTickFrequency", tickFreqFeat) == VmbErrorSuccess) {
+        VmbInt64_t rawFreq = 0;
+        if (tickFreqFeat->GetValue(rawFreq) == VmbErrorSuccess && rawFreq > 0) {
+            tickFreqHz_ = static_cast<uint64_t>(rawFreq);
+        }
+    } else if (camera_->GetFeatureByName("DeviceTimestampFrequency", tickFreqFeat) == VmbErrorSuccess) {
+        VmbInt64_t rawFreq = 0;
+        if (tickFreqFeat->GetValue(rawFreq) == VmbErrorSuccess && rawFreq > 0) {
+            tickFreqHz_ = static_cast<uint64_t>(rawFreq);
+        }
+    }
+    std::cout << "[VimbaXFrameSource] Timestamp tick frequency = " << tickFreqHz_ << " Hz" << std::endl;
+
     return true;
 }
 
