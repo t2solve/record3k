@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <sstream>
 #include <fstream>
+#include <unordered_map>
 #include <liblbt/factory/model_factory.h>
 
 static std::unique_ptr<InfoDataManager> gInfoMgr;
@@ -20,7 +21,44 @@ InfoDataManager::InfoDataManager(std::filesystem::path baseDir) : baseDir_(std::
     }
 }
 
-void InfoDataManager::start() { std::lock_guard lk(mtx_); ensureStartedUnlocked(); }
+// Check that each JSON file's UID field matches its filename (the store key).
+// A mismatch means /get/<uid> and /do/camera/<uid> lookups will 404.
+static void warnOnUIDMismatch(const std::string& cat, JsonStore& store) {
+    // Map of category name -> the JSON field that must equal the filename stem
+    static const std::unordered_map<std::string, std::string> uidFields = {
+        {"cameras",    "camUID"},
+        {"pipelines",  "pipelineUID"},
+    };
+    auto fieldIt = uidFields.find(cat);
+    if (fieldIt == uidFields.end()) return; // no strict UID field for this category
+
+    const std::string& uidField = fieldIt->second;
+    for (const auto& key : store.keys()) {
+        auto v = store.get(key);
+        if (!v) continue;
+        if (!v->isMember(uidField)) {
+            LOG_WARN << "[DataIntegrity] " << cat << "/" << key << ".json is missing field \""
+                     << uidField << "\" — lookups by UID will fail";
+            continue;
+        }
+        const std::string jsonUID = (*v)[uidField].asString();
+        if (jsonUID != key) {
+            LOG_WARN << "[DataIntegrity] " << cat << "/" << key
+                     << ".json: filename key \"" << key
+                     << "\" != " << uidField << " \"" << jsonUID
+                     << "\" — rename the file to " << jsonUID
+                     << ".json or the API will return 404 when queried by UID";
+        }
+    }
+}
+
+void InfoDataManager::start() {
+    std::lock_guard lk(mtx_);
+    ensureStartedUnlocked();
+    for (auto& kv : cats_) {
+        warnOnUIDMismatch(kv.first, *kv.second.store);
+    }
+}
 void InfoDataManager::stop() { std::lock_guard lk(mtx_); for (auto& kv : cats_) kv.second.store->stop(); }
 void InfoDataManager::ensureStartedUnlocked() { for (auto& kv : cats_) kv.second.store->start(); }
 

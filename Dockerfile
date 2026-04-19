@@ -3,7 +3,7 @@
 # podman run --rm -it --name recorder-3k --gpus nvidia.com/all --network=host recorder-3k bash
 # DEBUG (with ping / ICMP enabled — NET_RAW cap + disable seccomp raw-socket filter):
 # podman run --rm -it --name recorder-3k --gpus nvidia.com/all --network=host --cap-add NET_RAW --security-opt seccomp=unconfined recorder-3k bash
-#
+# 
 
 FROM cuda-builder:latest 
 
@@ -31,8 +31,8 @@ RUN if [ ! -d /app/src/liblbt/include/liblbt ]; then \
 # sanity check
 RUN ls -al /app/src/liblbt/include/liblbt
 
-# ONLY for debug 
-#RUN apt-get update && apt-get install -y gdb
+# Debug tools (gdb for crash diagnosis, gdbserver for remote debugging)
+RUN apt-get update && apt-get install -y --no-install-recommends gdb gdbserver
 
 # Python3 + ping for camera debug scripting (debug_camera_network.py)
 RUN apt-get update && apt-get install -y --no-install-recommends python3 iputils-ping 

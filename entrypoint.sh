@@ -48,10 +48,60 @@ fi
 echo ""
 echo "======================================================"
 echo "  record3k API server starting up..."
-echo "  Web UI (via Caddy):  https://localhost:3000"
+echo "  Web UI (via Caddy):  http://localhost:3000"
 echo "  API direct:          http://localhost:8080"
 echo "======================================================"
 echo ""
 
-# Hand off to the real command (default: ./apiserver, or whatever CMD/args passed)
-exec "$@"
+# ---------------------------------------------------------------------------
+# Optional GDB wrapping — set DEBUG_GDB in the environment to enable.
+#
+#   DEBUG_GDB=batch       — run, print full backtrace on crash, then exit.
+#                           Best for catching the crash that kills Xorg.
+#                           Use: environment: [DEBUG_GDB=batch] in compose.yaml
+#
+#   DEBUG_GDB=server      — start a gdbserver on port 2345 so you can attach
+#                           from the host with:
+#                             gdb ./apiserver
+#                             (gdb) target remote localhost:2345
+#                           Requires exposing port 2345 in compose.yaml.
+#
+# CUDA_LAUNCH_BLOCKING=1 forces synchronous kernel launches so GPU errors are
+# reported at the exact offending call instead of a random later point.
+# ---------------------------------------------------------------------------
+if [ -n "${DEBUG_GDB:-}" ]; then
+    # Enable synchronous CUDA error reporting to get precise crash location
+    export CUDA_LAUNCH_BLOCKING=1
+    echo "[entrypoint] CUDA_LAUNCH_BLOCKING=1 set (synchronous error reporting)"
+
+    case "${DEBUG_GDB}" in
+        batch)
+            echo "[entrypoint] DEBUG_GDB=batch — running under gdb (batch mode, prints backtrace on crash)"
+            exec gdb \
+                --batch \
+                -ex "set pagination off" \
+                -ex "set print thread-events off" \
+                -ex "handle SIGUSR1 nostop noprint pass" \
+                -ex "handle SIGUSR2 nostop noprint pass" \
+                -ex "handle SIGIO  nostop noprint pass" \
+                -ex "run" \
+                -ex "thread apply all backtrace full" \
+                -ex "quit" \
+                --args "$@"
+            ;;
+        server)
+            GDB_PORT="${GDB_PORT:-2345}"
+            echo "[entrypoint] DEBUG_GDB=server — starting gdbserver on port ${GDB_PORT}"
+            echo "[entrypoint]   Connect from host: gdb ./apiserver"
+            echo "[entrypoint]     (gdb) target remote localhost:${GDB_PORT}"
+            exec gdbserver ":${GDB_PORT}" "$@"
+            ;;
+        *)
+            echo "[entrypoint] Unknown DEBUG_GDB value '${DEBUG_GDB}' — expected 'batch' or 'server'. Running normally."
+            exec "$@"
+            ;;
+    esac
+else
+    # Normal launch
+    exec "$@"
+fi

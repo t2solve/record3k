@@ -16,6 +16,9 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/opencv.hpp>
+#ifdef CUDA_ENABLED
+#include <opencv2/core/cuda.hpp>
+#endif
 
 #include <thread>
 #include <optional>
@@ -202,6 +205,34 @@ int main(int argc, char* argv[])
     // Initialize InfoDataManager (this also starts the stores)
     infoDataManager().start();
     LOG_INFO << "InfoDataManager initialized";
+
+    // --- CUDA availability check -------------------------------------------
+    // Log this early so pipeline step creation issues are immediately visible.
+    // nvidia-smi only lists processes that have allocated GPU memory, so this
+    // is the definitive check for whether CUDA pipeline steps will be used.
+#ifdef CUDA_ENABLED
+    {
+        int cudaDeviceCount = cv::cuda::getCudaEnabledDeviceCount();
+        if (cudaDeviceCount > 0) {
+            LOG_INFO << "[CUDA] CUDA is available: " << cudaDeviceCount << " device(s) found."
+                     << " Pipeline steps with CUDA_PREFERRED/CUDA_ONLY will use the GPU.";
+            for (int i = 0; i < cudaDeviceCount; ++i) {
+                cv::cuda::DeviceInfo di(i);
+                LOG_INFO << "[CUDA]   Device " << i << ": " << di.name()
+                         << "  totalMemory=" << (di.totalMemory() / (1024 * 1024)) << " MB";
+            }
+        } else {
+            LOG_WARN << "[CUDA] CUDA_ENABLED is defined but cv::cuda::getCudaEnabledDeviceCount() "
+                     << "returned 0. All pipeline steps will fall back to CPU. "
+                     << "Check that the container has GPU access (CDI / --gpus) and that "
+                     << "OpenCV was built with CUDA support.";
+        }
+    }
+#else
+    LOG_WARN << "[CUDA] Binary was compiled WITHOUT CUDA_ENABLED. "
+             << "All pipeline steps will run on CPU regardless of processing_mode.";
+#endif
+    // -----------------------------------------------------------------------
     
     // Setup FileManager callback to use InfoDataManager
     lbt::FileManager::instance().setFileInfoCreator(

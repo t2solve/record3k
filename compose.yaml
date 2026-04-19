@@ -2,7 +2,9 @@
 # OLD: podman rm -f record3k-api record3k-client 
 # RUN+BUILD: podman-compose up --build
 # LOGIN: podman exec -it record3k-api bash
-#
+# COPY new Config files: podman cp ./config/examples/intialrun/data/cameras/cam-3-hometest.json record3k-api:/app/bin/data/cameras/
+# WATCH GPU: watch podman exec -it record3k-api nvidia-smi
+ 
 # Services:
 #   api     — C++/Drogon API server (built from Dockerfile, GPU-enabled)
 #   client  — Caddy serving the static web UI + reverse-proxying /api/* -> api:8080
@@ -103,6 +105,14 @@ services:
       # Log file directory inside the container (matches drogon.config.json log_path).
       # Override with LOG_PATH=/some/other/path if needed.
       LOG_PATH: /app/bin/logs
+      # GDB debugging — uncomment ONE of the options below to enable:
+      # DEBUG_GDB: batch    # auto-run, print full backtrace on crash, exit
+      DEBUG_GDB: server   # start gdbserver on GDB_PORT (default 2345)
+      GDB_PORT: 2345
+      # run on host
+      # gdb ./build/bin/apiserver
+      # (gdb) target remote localhost:2345
+      # (gdb) continue
 
     volumes:
       # Persist recorded data and configuration outside the container so it
