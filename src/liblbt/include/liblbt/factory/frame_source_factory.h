@@ -25,7 +25,8 @@ public:
      */
     static std::unique_ptr<IFrameSource> createFromCameraInfo(
         const api::CameraInfo& cameraInfo,
-        bool debugLog = false);
+        bool debugLog = false,
+        double targetFps = 5.0);
     
     /**
      * @brief Create a file-based frame source

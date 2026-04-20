@@ -295,6 +295,7 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
     std::string studyInfoUID = (json && json->isMember("studyInfoUID")) ? (*json)["studyInfoUID"].asString() : "study-unknown";
     std::string description = (json && json->isMember("description")) ? (*json)["description"].asString() : "record session";
     bool pipeLineTest = (json && json->isMember("pipeLineTest")) ? (*json)["pipeLineTest"].asBool() : false;
+    double targetFPS = (json && json->isMember("targetFPS")) ? (*json)["targetFPS"].asDouble() : 5.0;
 
     //TODO check if all parameters are valid
     //test 1 validate duration
@@ -341,7 +342,8 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
         pipelineUID, 
         studyInfoUID, 
         staticPipeLineFile,
-        pipeLineTest]() mutable {
+        pipeLineTest,
+        targetFPS]() mutable {
         std::string threadId = getThreadIdStr();
         LOG_INFO << "[DoController::recordStart][TID:" << threadId << "] Background thread started for camera: " << camUID;
 
@@ -494,7 +496,7 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
             recordConfig.frameSource = std::move(frameSource);
             recordConfig.pipeline = pipeConfig;
             recordConfig.totalTimeSeconds = durationMs / 1000.0;  
-            recordConfig.targetFPS = 10;          
+            recordConfig.targetFPS = targetFPS;
             recordConfig.recordUID = recordUID;
             recordConfig.cameraUID = camUID;  // Set camera UID for locking
             recordConfig.outputDir = lbt::FileManager::instance().getTempOutputPath().string();
@@ -543,7 +545,7 @@ void DoController::recordStart(const HttpRequestPtr& req, std::function<void (co
             recordInfoJson["description"] = description;
             recordInfoJson["status"] = "started";
             recordInfoJson["targetDurationSeconds"] = durationMs / 1000.0;
-            recordInfoJson["targetFPS"] = 10.0;
+            recordInfoJson["targetFPS"] = targetFPS;
             recordInfoJson["datetimeStart"] = getCurrentTimeISO8601();
             recordInfoJson["fileUID"] = "file-rec-" + recordUID;
             

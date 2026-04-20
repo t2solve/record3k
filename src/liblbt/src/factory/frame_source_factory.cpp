@@ -12,7 +12,8 @@ namespace lbt {
 
 std::unique_ptr<IFrameSource> FrameSourceFactory::createFromCameraInfo(
     const api::CameraInfo& cameraInfo,
-    bool debugLog)
+    bool debugLog,
+    double targetFps)
 {
     std::cout << "[FrameSourceFactory] Creating frame source for camera: " << cameraInfo.camUID << std::endl;
     std::cout << "[FrameSourceFactory]   Type: " << cameraInfo.cameraType << std::endl;
@@ -34,7 +35,7 @@ std::unique_ptr<IFrameSource> FrameSourceFactory::createFromCameraInfo(
         }
 
         // VimbaXFrameSource(serial, interfaceIdOrMac, debugLog, cameraIp, targetFps)
-        return std::make_unique<VimbaXFrameSource>(serial, mac, debugLog, ip, 10.0);
+        return std::make_unique<VimbaXFrameSource>(serial, mac, debugLog, ip, targetFps);
 #else
         std::cerr << "[FrameSourceFactory] ERROR: VimbaX not enabled in build" << std::endl;
         return nullptr;

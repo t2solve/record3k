@@ -344,15 +344,59 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
         // b) Bare-IP open via VimbaX transport layer
         //    OpenCameraByID both locates and opens the camera in one call, so we
         //    return early to skip the camera_->Open() below (it is already open).
-        std::cout << "[VimbaXFrameSource] Strategy 4: Trying OpenCameraByID(ip='"
-                  << cameraIp << "')..." << std::endl;
-        VmbErrorType s4err = system_.OpenCameraByID(cameraIp.c_str(), VmbAccessModeFull, camera_);
-        if (s4err == VmbErrorSuccess) {
-            std::cout << "[VimbaXFrameSource] ✓ Strategy 4: Opened camera via bare IP" << std::endl;
-            // Camera is already open — skip camera_->Open() and go straight to frame setup
-            return startContinuousCapture();
+        //
+        //    Retry design note:
+        //      Python startAll.py already retries the entire recording-start HTTP
+        //      request (3×, 5-10s gaps), which creates a fresh VimbaXFrameSource
+        //      each time.  Each failed OpenCameraByID call leaves residual state in
+        //      the VimbaX SDK transport layer in the same process.  With 4 C++
+        //      retries × 3 Python retries = 12 cumulative failures, the SDK crashes.
+        //      Testing shows the SDK survives ~8 failures before segfaulting.
+        //
+        //      Therefore: attempt only ONCE here.  If the camera is locked by an
+        //      active GigE heartbeat (err=-12), the SDK cannot reclaim it by waiting
+        //      a few seconds — the heartbeat is still live.  The Python-level retry
+        //      with its longer gap (5-10 s) is the right place for that wait.
+        //      Keeping a single attempt per VimbaXFrameSource instance limits total
+        //      SDK damage to 3 failed calls across all Python retries.
+        constexpr int    S4_MAX_ATTEMPTS  = 2;  // one shot; Python handles outer retry
+        VmbErrorType     s4err            = VmbErrorSuccess;
+
+        for (int attempt = 1; attempt <= S4_MAX_ATTEMPTS; ++attempt) {
+            // Force the VimbaX transport layer to re-scan and flush its internal
+            // camera-entry table before opening.  Without this, a stale entry from a
+            // previous failed open causes a segfault inside OpenCameraByID.
+            {
+                CameraPtrVector discardedList;
+                system_.GetCameras(discardedList);
+            }
+
+            std::cout << "[VimbaXFrameSource] Strategy 4: Trying OpenCameraByID(ip='"
+                      << cameraIp << "') attempt " << attempt << "/" << S4_MAX_ATTEMPTS << " ..." << std::endl;
+            s4err = system_.OpenCameraByID(cameraIp.c_str(), VmbAccessModeFull, camera_);
+            if (s4err == VmbErrorSuccess) {
+                std::cout << "[VimbaXFrameSource] ✓ Strategy 4: Opened camera via bare IP" << std::endl;
+                // Camera is already open — skip camera_->Open() and go straight to frame setup
+                return startContinuousCapture();
+            }
+            std::cerr << "[VimbaXFrameSource] ✗ Strategy 4: OpenCameraByID failed (err=" << s4err << ")" << std::endl;
+            if (s4err == -12 /*VmbErrorInUse*/ && gev.responded) {
+                std::cerr << "[VimbaXFrameSource]   Camera answered GVCP discovery but is locked "
+                             "(err=-12 VmbErrorInUse) — likely held by another process. "
+                             "Stop that process or wait for its GigE Vision heartbeat to expire." << std::endl;
+            }
+            // Reset after failure so the !camera_ guard below stays reliable.
+            // Do NOT reset before the call — destroying a partially-populated CameraPtr
+            // before the SDK has processed the failure corrupts the transport layer.
+            camera_.reset();
         }
-        std::cerr << "[VimbaXFrameSource] ✗ Strategy 4: OpenCameraByID failed (err=" << s4err << ")" << std::endl;
+
+        // Post-attempt SDK flush: stabilise the transport layer before returning so
+        // the next VimbaXFrameSource instance (Python retry) starts with clean state.
+        {
+            CameraPtrVector discardedList;
+            system_.GetCameras(discardedList);
+        }
     }
 
     if (!camera_) {
