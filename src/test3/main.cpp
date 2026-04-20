@@ -481,7 +481,8 @@ int main(int argc, char* argv[])
     bool debugPipeline = true;
 #ifdef CUDA_ENABLED
     if (debugPipeline) {
-        int devs = cv::cuda::getCudaEnabledDeviceCount();
+        int devs = 0;
+        try { devs = cv::cuda::getCudaEnabledDeviceCount(); } catch (const cv::Exception&) {}
         qDebug() << "[PipelineDebug] CUDA devices available:" << devs;
     }
 #endif

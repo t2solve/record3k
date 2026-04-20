@@ -1,5 +1,20 @@
 #include <algorithm>
 #include "process_step_factory.h"
+
+#ifdef CUDA_ENABLED
+#include <opencv2/core/cuda.hpp>
+// Returns the number of CUDA-enabled devices without throwing.
+// cudaDeviceCountSafe() throws cv::Exception(-217) when the
+// CUDA runtime is present but no GPU driver is accessible (e.g. container
+// started without --gpus / CDI).  All factory methods use this wrapper.
+static int cudaDeviceCountSafe() noexcept {
+    try {
+        return cv::cuda::getCudaEnabledDeviceCount();
+    } catch (...) {
+        return 0;
+    }
+}
+#endif
 #include "steps/gaussian_blur.h"
 #include "steps/bilateral_filter.h"
 #include "steps/median_filter.h"
@@ -37,7 +52,7 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createMorphologyClose(Processin
         case ProcessingMode::CUDA_PREFERRED:
         case ProcessingMode::CUDA_ONLY:
 #ifdef CUDA_ENABLED
-            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+            if (cudaDeviceCountSafe() > 0) {
                 return std::make_shared<MorphologyCloseCUDAStep>();
             } else if (mode == ProcessingMode::CUDA_ONLY) {
                 throw std::runtime_error("CUDA not available for morphology close");
@@ -56,7 +71,7 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createGaussianBlur(ProcessingMo
         case ProcessingMode::CUDA_PREFERRED:
         case ProcessingMode::CUDA_ONLY:
 #ifdef CUDA_ENABLED
-            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+            if (cudaDeviceCountSafe() > 0) {
                 return std::make_shared<GaussianBlurCUDAStep>();
             } else if (mode == ProcessingMode::CUDA_ONLY) {
                 throw std::runtime_error("CUDA not available for Gaussian blur");
@@ -75,7 +90,7 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createBilateralFilter(Processin
         case ProcessingMode::CUDA_PREFERRED:
         case ProcessingMode::CUDA_ONLY:
 #ifdef CUDA_ENABLED
-            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+            if (cudaDeviceCountSafe() > 0) {
                 return std::make_shared<BilateralFilterCUDAStep>();
             } else if (mode == ProcessingMode::CUDA_ONLY) {
                 throw std::runtime_error("CUDA not available for bilateral filter");
@@ -99,7 +114,7 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createEdgeDetection(ProcessingM
         case ProcessingMode::CUDA_PREFERRED:
         case ProcessingMode::CUDA_ONLY:
 #ifdef CUDA_ENABLED
-            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+            if (cudaDeviceCountSafe() > 0) {
                 return std::make_shared<EdgeDetectionCUDAStep>();
             } else if (mode == ProcessingMode::CUDA_ONLY) {
                 throw std::runtime_error("CUDA not available for edge detection");
@@ -118,7 +133,7 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createSharpen(ProcessingMode mo
         case ProcessingMode::CUDA_PREFERRED:
         case ProcessingMode::CUDA_ONLY:
 #ifdef CUDA_ENABLED
-            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+            if (cudaDeviceCountSafe() > 0) {
                 return std::make_shared<SharpenCUDAStep>();
             } else if (mode == ProcessingMode::CUDA_ONLY) {
                 throw std::runtime_error("CUDA not available for sharpen");
@@ -159,7 +174,7 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createLensCorrection(Processing
         case ProcessingMode::CUDA_PREFERRED:
         case ProcessingMode::CUDA_ONLY:
 #ifdef CUDA_ENABLED
-            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+            if (cudaDeviceCountSafe() > 0) {
                 return std::make_shared<LensCorrectionCUDAStep>();
             } else if (mode == ProcessingMode::CUDA_ONLY) {
                 throw std::runtime_error("CUDA not available for lens correction");
@@ -178,7 +193,7 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createROICircleCrop(ProcessingM
         case ProcessingMode::CUDA_PREFERRED:
         case ProcessingMode::CUDA_ONLY:
 #ifdef CUDA_ENABLED
-            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+            if (cudaDeviceCountSafe() > 0) {
                 return std::make_shared<ROICircleCropCUDAStep>();
             } else if (mode == ProcessingMode::CUDA_ONLY) {
                 throw std::runtime_error("CUDA not available for ROI circle crop");
@@ -202,7 +217,7 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createBackgroundSubtractionMOG2
         case ProcessingMode::CUDA_PREFERRED:
         case ProcessingMode::CUDA_ONLY:
 #ifdef CUDA_ENABLED
-            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+            if (cudaDeviceCountSafe() > 0) {
                 return std::make_shared<BackgroundSubtractionCUDAStep>();
             } else if (mode == ProcessingMode::CUDA_ONLY) {
                 throw std::runtime_error("CUDA not available for background subtraction MOG2");
@@ -229,7 +244,7 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createContourAreaFilter(Process
         case ProcessingMode::CUDA_PREFERRED:
         case ProcessingMode::CUDA_ONLY:
 #ifdef CUDA_ENABLED
-            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+            if (cudaDeviceCountSafe() > 0) {
                 return std::make_shared<ContourAreaFilterCUDAStep>();
             } else if (mode == ProcessingMode::CUDA_ONLY) {
                 throw std::runtime_error("CUDA not available for contour area filter");
@@ -248,7 +263,7 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createBinaryThreshold(Processin
         case ProcessingMode::CUDA_PREFERRED:
         case ProcessingMode::CUDA_ONLY:
 #ifdef CUDA_ENABLED
-            if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
+            if (cudaDeviceCountSafe() > 0) {
                 return std::make_shared<BinaryThresholdCUDAStep>();
             } else if (mode == ProcessingMode::CUDA_ONLY) {
                 throw std::runtime_error("CUDA not available for binary threshold");

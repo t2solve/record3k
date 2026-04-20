@@ -107,8 +107,8 @@ services:
       LOG_PATH: /app/bin/logs
       # GDB debugging — uncomment ONE of the options below to enable:
       # DEBUG_GDB: batch    # auto-run, print full backtrace on crash, exit
-      DEBUG_GDB: server   # start gdbserver on GDB_PORT (default 2345)
-      GDB_PORT: 2345
+      #DEBUG_GDB: server   # start gdbserver on GDB_PORT (default 2345)
+      #GDB_PORT: 2345
       # run on host
       # gdb ./build/bin/apiserver
       # (gdb) target remote localhost:2345

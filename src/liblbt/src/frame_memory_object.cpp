@@ -142,7 +142,11 @@ int FrameMemoryObject::channels() const {
 
 bool FrameMemoryObject::isCudaAvailable() {
 #ifdef CUDA_ENABLED
-    return cv::cuda::getCudaEnabledDeviceCount() > 0;
+    try {
+        return cv::cuda::getCudaEnabledDeviceCount() > 0;
+    } catch (const cv::Exception&) {
+        return false;  // CUDA runtime present but no driver / device accessible
+    }
 #else
     return false;
 #endif

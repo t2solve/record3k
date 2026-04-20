@@ -212,7 +212,13 @@ int main(int argc, char* argv[])
     // is the definitive check for whether CUDA pipeline steps will be used.
 #ifdef CUDA_ENABLED
     {
-        int cudaDeviceCount = cv::cuda::getCudaEnabledDeviceCount();
+        int cudaDeviceCount = 0;
+        try {
+            cudaDeviceCount = cv::cuda::getCudaEnabledDeviceCount();
+        } catch (const cv::Exception& e) {
+            LOG_WARN << "[CUDA] getCudaEnabledDeviceCount() threw: " << e.what()
+                     << " — no GPU driver accessible. All steps will run on CPU.";
+        }
         if (cudaDeviceCount > 0) {
             LOG_INFO << "[CUDA] CUDA is available: " << cudaDeviceCount << " device(s) found."
                      << " Pipeline steps with CUDA_PREFERRED/CUDA_ONLY will use the GPU.";

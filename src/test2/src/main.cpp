@@ -26,8 +26,12 @@ int main(int argc, char* argv[]) {
     // Check CUDA availability
     bool cudaAvailable = false;
 #ifdef CUDA_ENABLED
-    cudaAvailable = cv::cuda::getCudaEnabledDeviceCount() > 0;
-    qDebug() << "CUDA Devices Available:" << cv::cuda::getCudaEnabledDeviceCount();
+    try {
+        cudaAvailable = cv::cuda::getCudaEnabledDeviceCount() > 0;
+        qDebug() << "CUDA Devices Available:" << cv::cuda::getCudaEnabledDeviceCount();
+    } catch (const cv::Exception& e) {
+        qWarning() << "CUDA probe failed (no GPU driver?):" << e.what();
+    }
 #else
     qDebug() << "CUDA Support: Not compiled";
 #endif

@@ -24,16 +24,13 @@ VimbaXFrameSource::FrameObserver::FrameObserver(CameraPtr cam)
 
 void VimbaXFrameSource::FrameObserver::FrameReceived(FramePtr frame) {
     VmbUint64_t ticks = 0;
-    // Primary: GVSP-embedded timestamp (set by camera HW at exact capture time)
-    frame->GetTimestamp(ticks);
-
-#ifdef VIMBAX_TIMESTAMP_STATS
-    const bool method1ok = (ticks != 0);
-#endif
-
-    // Fallback: camera tick counter latch (slightly later than capture -
-    // one GEV round-trip - but still on the camera's own hardware clock).
-    if (ticks == 0 && m_pCamera) {
+    // Timestamp via TimestampLatch only.
+    // GetTimestamp() (GVSP-embedded, Method 1) is intentionally NOT used:
+    // it fires on only ~5 % of frames.  Mixing it with the latch (Method 2)
+    // introduces ~1 RTT apparent order inversions because the two methods
+    // measure different points in time.  Using the latch exclusively keeps
+    // all timestamps on the same reference and preserves strict monotonicity.
+    if (m_pCamera) {
         FeaturePtr latchCmd, tickVal;
         // GEV 1.x feature names (older cameras / legacy TL)
         if (m_pCamera->GetFeatureByName("GevTimestampControlLatch", latchCmd) == VmbErrorSuccess &&
@@ -59,12 +56,22 @@ void VimbaXFrameSource::FrameObserver::FrameReceived(FramePtr frame) {
     }
 
 #ifdef VIMBAX_TIMESTAMP_STATS
-    if      (method1ok)  ++statsMethod1_;
-    else if (ticks != 0) ++statsMethod2_;
-    else                 ++statsMissed_;
+    // Method 1 (GVSP-embedded) is disabled — all frames go through Method 2.
+    if (ticks != 0) ++statsMethod2_;
+    else            ++statsMissed_;
 #endif
 
     std::lock_guard<std::mutex> lock(mtx_);
+    // Monotonicity guard: ticks must never go backwards.
+    // A regression means the SDK callback thread delivered frames out of order,
+    // which would silently corrupt any downstream timestamp-based ordering.
+    if (ticks != 0 && lastTicks_ != 0 && ticks < lastTicks_) {
+        std::cerr << "[VimbaXFrameSource] WARNING: timestamp regression detected! "
+                  << "prev=" << lastTicks_ << " cur=" << ticks
+                  << " (delta=-" << (lastTicks_ - ticks) << " ticks) "
+                  << "— frame order may be violated" << std::endl;
+    }
+    if (ticks != 0) lastTicks_ = ticks;
     queue_.push({frame, ticks});
     cv_.notify_one();
 }
@@ -83,6 +90,7 @@ VimbaXFrameSource::FrameObserver::waitForFrame(uint32_t timeoutMs) {
 void VimbaXFrameSource::FrameObserver::clear() {
     std::lock_guard<std::mutex> lock(mtx_);
     while (!queue_.empty()) queue_.pop();
+    lastTicks_ = 0;
 }
 
 #ifdef VIMBAX_TIMESTAMP_STATS
@@ -96,15 +104,10 @@ void VimbaXFrameSource::FrameObserver::logStats(const std::string& prefix) const
     };
     const std::string tag = prefix.empty() ? "[VimbaXFrameSource]" : prefix;
     std::cout << tag << " === Timestamp method stats (" << total << " frames) ==="  << std::endl;
-    std::cout << tag << "   Method 1 — GVSP-embedded (precise, zero RTT)       : "
-              << m1   << " frames (" << pct(m1)   << "%)" << std::endl;
-    std::cout << tag << "   Method 2 — GevTimestampControlLatch (one RTT later) : "
+    std::cout << tag << "   Latch (GevTimestampControlLatch / TimestampLatch)   : "
               << m2   << " frames (" << pct(m2)   << "%)" << std::endl;
-    std::cout << tag << "   Missed  — both methods returned 0                  : "
+    std::cout << tag << "   Missed — latch returned 0                          : "
               << miss << " frames (" << pct(miss) << "%)" << std::endl;
-    if (m2 > 0)
-        std::cout << tag << "   WARNING: Method 2 timestamps carry a ~GEV round-trip offset."
-                  << " See doc/FRAME_TIMESTAMP_DISCUSSION.md." << std::endl;
     if (miss > 0)
         std::cout << tag << "   WARNING: " << miss << " frames have no camera timestamp at all."
                   << " Downstream analysis must treat these as missing data." << std::endl;

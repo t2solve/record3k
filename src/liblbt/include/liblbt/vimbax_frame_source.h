@@ -82,13 +82,15 @@ private:
         std::mutex mtx_;
         std::condition_variable cv_;
         std::queue<std::pair<VmbCPP::FramePtr, VmbUint64_t>> queue_;
+        // Last non-zero tick seen — used to detect unexpected SDK callback reordering.
+        VmbUint64_t lastTicks_{0};
 
 #ifdef VIMBAX_TIMESTAMP_STATS
         // Counters incremented atomically from the DMA callback thread.
-        // Method 1: GVSP-embedded tick — most precise, no network round-trip.
-        // Method 2: GevTimestampControlLatch fallback — adds ~one GEV RTT offset.
-        // Missed:   both methods returned 0 — timestamp is unavailable.
-        std::atomic<uint64_t> statsMethod1_{0};
+        // Method 1 (GVSP-embedded) is disabled; only latch and missed are tracked.
+        // Latch: GevTimestampControlLatch / TimestampLatch fallback.
+        // Missed:  latch returned 0 — timestamp is unavailable.
+        std::atomic<uint64_t> statsMethod1_{0};  // always 0; kept for ABI compat
         std::atomic<uint64_t> statsMethod2_{0};
         std::atomic<uint64_t> statsMissed_{0};
 #endif
@@ -108,7 +110,9 @@ private:
 
     // Pool of pre-announced frame buffers; keeps shared_ptr refs alive for
     // the lifetime of the stream so RevokeAllFrames works correctly.
-    static constexpr size_t kFramePoolSize = 3;
+    // 8 slots @ 10 fps gives ~800 ms of headroom before frames start dropping.
+    // Never reduce below 3 (VimbaX minimum for continuous streaming).
+    static constexpr size_t kFramePoolSize = 8;
     std::vector<VmbCPP::FramePtr> framePool_;
 
     // Observer that bridges async DMA callbacks to the pull-based nextFrame() API.
