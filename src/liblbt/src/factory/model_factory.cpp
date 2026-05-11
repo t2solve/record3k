@@ -142,7 +142,7 @@ StatusOr<api::PipelineInfo> ModelFactory::fromJsonPipeline(const Json::Value& j)
 }
 
 // CalibrationInfo
-StatusOr<api::CalibrationInfo> ModelFactory::makeCalibrationInfo(std::optional<std::string> calibrationUID, std::string cameraUID, std::optional<std::string> description, std::string status, std::string datetimeCreated, std::string fileUID) {
+StatusOr<api::CalibrationInfo> ModelFactory::makeCalibrationInfo(std::optional<std::string> calibrationUID, std::string cameraUID, std::optional<std::string> description, std::string status, std::string datetimeCreated, std::string fileUID, std::optional<double> avgReprojectionError, std::optional<int> validFrames, std::optional<int> imageSizeWidth, std::optional<int> imageSizeHeight) {
     std::string uid = calibrationUID && !calibrationUID->empty() ? trim(*calibrationUID) : generateCalibrationUID();
     cameraUID = trim(cameraUID);
     status = trim(status);
@@ -153,7 +153,8 @@ StatusOr<api::CalibrationInfo> ModelFactory::makeCalibrationInfo(std::optional<s
     if (!isIso8601Like(datetimeCreated)) return {"datetimeCreated not ISO8601-like"};
     if (!isReasonableUID(fileUID)) return {"Invalid fileUID"};
     if (!nonEmpty(status)) status = "unknown";
-    api::CalibrationInfo c{uid, cameraUID, description, status, datetimeCreated, fileUID};
+    api::CalibrationInfo c{uid, cameraUID, description, status, datetimeCreated, fileUID,
+                           avgReprojectionError, validFrames, imageSizeWidth, imageSizeHeight};
     return c;
 }
 StatusOr<api::CalibrationInfo> ModelFactory::fromJsonCalibration(const Json::Value& j) {
@@ -162,7 +163,11 @@ StatusOr<api::CalibrationInfo> ModelFactory::fromJsonCalibration(const Json::Val
                                j.isMember("description")? std::optional<std::string>(j["description"].asString()) : std::nullopt,
                                j.get("status","" ).asString(),
                                j.get("datetimeCreated","" ).asString(),
-                               j.get("fileUID","" ).asString());
+                               j.get("fileUID","" ).asString(),
+                               j.isMember("avgReprojectionError") ? std::optional<double>(j["avgReprojectionError"].asDouble()) : std::nullopt,
+                               j.isMember("validFrames")          ? std::optional<int>(j["validFrames"].asInt())                : std::nullopt,
+                               j.isMember("imageSizeWidth")       ? std::optional<int>(j["imageSizeWidth"].asInt())             : std::nullopt,
+                               j.isMember("imageSizeHeight")      ? std::optional<int>(j["imageSizeHeight"].asInt())            : std::nullopt);
 }
 
 // FileInfo

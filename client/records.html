@@ -16,47 +16,37 @@
         <nav class="main-nav">
             <a href="index.html" class="nav-link">📷 Cameras</a>
             <a href="records.html" class="nav-link active">📹 Records</a>
+            <a href="files.html" class="nav-link">📁 Files</a>
             <a href="start.html" class="nav-link">▶️ Start Recording</a>
             <a href="settings.html" class="nav-link">⚙️ Settings</a>
             <a href="http://127.0.0.1:8080/swagger" class="nav-link" target="_blank">📚 API Docs</a>
         </nav>
 
         <main>
-            <section class="records-section">
+            <!-- Unified session log: records + calibrations with filter/sort controls -->
+            <section class="session-section">
                 <div class="section-header">
-                    <h2>Recording Sessions</h2>
+                    <h2>Session Log</h2>
                     <div class="header-controls">
-                        <select id="records-sort" class="sort-select">
+                        <select id="session-filter" class="sort-select">
+                            <option value="all">All</option>
+                            <option value="records">📹 Records only</option>
+                            <option value="calibrations">🎯 Calibrations only</option>
+                        </select>
+                        <select id="session-sort" class="sort-select">
                             <option value="newest">Newest First</option>
                             <option value="oldest">Oldest First</option>
                         </select>
-                        <button id="refresh-records-btn" class="btn-refresh">🔄 Refresh</button>
+                        <button id="refresh-all-btn" class="btn-refresh">🔄 Refresh</button>
                     </div>
                 </div>
-                
-                <div id="records-loading" class="loading">Loading records...</div>
-                <div id="records-error" class="error" style="display: none;"></div>
-                
-                <div id="records-list" class="records-list"></div>
+
+                <div id="session-loading" class="loading">Loading...</div>
+                <div id="session-error" class="error" style="display: none;"></div>
+
+                <div id="session-list" class="session-list"></div>
             </section>
 
-            <section class="files-section">
-                <div class="section-header">
-                    <h2>Files</h2>
-                    <div class="header-controls">
-                        <select id="files-sort" class="sort-select">
-                            <option value="newest">Newest First</option>
-                            <option value="oldest">Oldest First</option>
-                        </select>
-                        <button id="refresh-files-btn" class="btn-refresh">🔄 Refresh</button>
-                    </div>
-                </div>
-                
-                <div id="files-loading" class="loading" style="display: none;">Loading files...</div>
-                <div id="files-error" class="error" style="display: none;"></div>
-                
-                <div id="files-list" class="files-list"></div>
-            </section>
         </main>
 
         <footer>

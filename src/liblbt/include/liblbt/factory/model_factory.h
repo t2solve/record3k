@@ -60,7 +60,11 @@ public:
         std::optional<std::string> description,
         std::string status,
         std::string datetimeCreated,
-        std::string fileUID);
+        std::string fileUID,
+        std::optional<double> avgReprojectionError = std::nullopt,
+        std::optional<int> validFrames = std::nullopt,
+        std::optional<int> imageSizeWidth = std::nullopt,
+        std::optional<int> imageSizeHeight = std::nullopt);
 
     static StatusOr<api::FileInfo> makeFileInfo(
         std::optional<std::string> fileUID,

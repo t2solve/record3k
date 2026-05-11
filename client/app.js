@@ -19,6 +19,9 @@ class BugTrackerApp {
         this.cameras = [];
         this.records = [];
         this.files = [];
+        this.calibrations = [];
+        this.activeRecordingCamUIDs = new Map(); // camUID → recordUID
+        this.recordingPollInterval = null;
         this.currentPage = this.detectPage();
         this.init();
     }
@@ -26,6 +29,7 @@ class BugTrackerApp {
     detectPage() {
         const path = window.location.pathname;
         if (path.includes('records.html')) return 'records';
+        if (path.includes('files.html')) return 'files';
         if (path.includes('start.html')) return 'start';
         return 'cameras';
     }
@@ -39,11 +43,13 @@ class BugTrackerApp {
             document.getElementById('refresh-btn')?.addEventListener('click', () => this.loadCameras());
             this.loadCameras();
         } else if (this.currentPage === 'records') {
-            document.getElementById('refresh-records-btn')?.addEventListener('click', () => this.loadRecords());
+            document.getElementById('refresh-all-btn')?.addEventListener('click', () => this.loadSessionData());
+            document.getElementById('session-filter')?.addEventListener('change', () => this.renderSessionList());
+            document.getElementById('session-sort')?.addEventListener('change', () => this.renderSessionList());
+            this.loadSessionData();
+        } else if (this.currentPage === 'files') {
             document.getElementById('refresh-files-btn')?.addEventListener('click', () => this.loadFiles());
-            document.getElementById('records-sort')?.addEventListener('change', () => this.renderRecords());
             document.getElementById('files-sort')?.addEventListener('change', () => this.renderFiles());
-            this.loadRecords();
             this.loadFiles();
         } else if (this.currentPage === 'start') {
             this.initStartRecordingPage();
@@ -396,13 +402,22 @@ class BugTrackerApp {
         cameraListEl.innerHTML = '';
 
         try {
-            const response = await fetch(`${API_BASE_URL}/info/cameras/list`, {
-                headers: getAuthHeaders()
-            });
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const [camResp, recResp] = await Promise.all([
+                fetch(`${API_BASE_URL}/info/cameras/list`, { headers: getAuthHeaders() }),
+                fetch(`${API_BASE_URL}/info/records/list`, { headers: getAuthHeaders() })
+            ]);
+            if (!camResp.ok) {
+                throw new Error(`HTTP ${camResp.status}: ${camResp.statusText}`);
             }
-            this.cameras = await response.json();
+            this.cameras = await camResp.json();
+            if (recResp.ok) {
+                const records = await recResp.json();
+                this.activeRecordingCamUIDs = new Map(
+                    records
+                        .filter(r => r.status === 'started')
+                        .map(r => [r.cameraUID, r.recordUID])
+                );
+            }
             this.renderCameras();
         } catch (error) {
             console.error('Failed to load cameras:', error);
@@ -421,17 +436,29 @@ class BugTrackerApp {
             return;
         }
 
-        cameraListEl.innerHTML = this.cameras.map(camera => `
-            <div class="camera-card ${camera.status === 'online' ? 'status-online' : 'status-offline'}">
+        cameraListEl.innerHTML = this.cameras.map(camera => {
+            const isRecording = this.activeRecordingCamUIDs.has(camera.camUID);
+            const recordUID = isRecording ? this.activeRecordingCamUIDs.get(camera.camUID) : null;
+            const cardClass = isRecording ? 'recording' : (camera.status === 'online' ? 'status-online' : 'status-offline');
+            const badgeHtml = isRecording
+                ? `<span class="status-badge recording">🔴 RECORDING</span>`
+                : `<span class="status-badge ${camera.status}">${camera.status}</span>`;
+            const disabledAttr = isRecording ? 'disabled' : '';
+            return `
+            <div class="camera-card ${cardClass}">
                 <div class="camera-header">
                     <h3>${this.escapeHtml(camera.description || 'Unknown Camera')}</h3>
-                    <span class="status-badge ${camera.status}">${camera.status}</span>
+                    ${badgeHtml}
                 </div>
                 <div class="camera-details">
                     <div class="detail-row">
                         <span class="label">Camera UID:</span>
                         <span class="value"><code>${this.escapeHtml(camera.camUID)}</code></span>
                     </div>
+                    ${isRecording ? `<div class="detail-row">
+                        <span class="label">Record UID:</span>
+                        <span class="value recording-uid"><code>${this.escapeHtml(recordUID)}</code></span>
+                    </div>` : ''}
                     <div class="detail-row">
                         <span class="label">MAC Address:</span>
                         <span class="value"><code>${this.escapeHtml(camera.macAddress)}</code></span>
@@ -446,15 +473,25 @@ class BugTrackerApp {
                     </div>
                 </div>
                 <div class="camera-actions">
-                    <button class="btn-action" onclick="app.testCamera('${this.escapeHtml(camera.camUID)}')">
+                    <button class="btn-action" ${disabledAttr} onclick="app.testCamera('${this.escapeHtml(camera.camUID)}')">
                         🧪 Test
                     </button>
-                    <button class="btn-action" onclick="app.calibrateCamera('${this.escapeHtml(camera.camUID)}')">
+                    <button class="btn-action" ${disabledAttr} onclick="app.calibrateCamera('${this.escapeHtml(camera.camUID)}')">
                         🎯 Calibrate
                     </button>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
+
+        // Auto-poll while any recording is active
+        if (this.activeRecordingCamUIDs.size > 0) {
+            if (!this.recordingPollInterval) {
+                this.recordingPollInterval = setInterval(() => this.loadCameras(), 5000);
+            }
+        } else {
+            clearInterval(this.recordingPollInterval);
+            this.recordingPollInterval = null;
+        }
     }
 
     escapeHtml(text) {
@@ -531,8 +568,6 @@ class BugTrackerApp {
     }
 
     async calibrateCamera(camUID) {
-        if (!confirm(`Start calibration for camera ${camUID}?`)) return;
-        
         try {
             const response = await fetch(`${API_BASE_URL}/do/camera/calibrate/${camUID}`, {
                 method: 'POST',
@@ -542,12 +577,196 @@ class BugTrackerApp {
             
             if (response.ok) {
                 const result = await response.json();
-                alert(`Calibration started!\nCalibration UID: ${result.calibrationUID}`);
+                this.showNotification(`🎯 Calibration started for ${camUID} — UID: ${result.calibrationUID}`, 'success');
             } else {
                 throw new Error(`HTTP ${response.status}`);
             }
         } catch (error) {
-            alert(`Failed to start calibration: ${error.message}`);
+            this.showNotification(`Failed to start calibration: ${error.message}`, 'error');
+        }
+    }
+
+    async loadCalibrations() {
+        const loadingEl = document.getElementById('calibrations-loading');
+        const errorEl = document.getElementById('calibrations-error');
+        const listEl = document.getElementById('calibrations-list');
+
+        if (loadingEl) loadingEl.style.display = 'block';
+        if (errorEl) errorEl.style.display = 'none';
+        if (listEl) listEl.innerHTML = '';
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/info/calibrations/list`, {
+                headers: getAuthHeaders()
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            this.calibrations = await response.json();
+            console.log('Loaded calibrations:', this.calibrations.length);
+            this.renderCalibrations();
+
+        } catch (error) {
+            console.error('Failed to load calibrations:', error);
+            if (errorEl) {
+                errorEl.textContent = `Failed to load calibrations: ${error.message}`;
+                errorEl.style.display = 'block';
+            }
+        } finally {
+            if (loadingEl) loadingEl.style.display = 'none';
+        }
+    }
+
+    async loadSessionData() {
+        const loadingEl = document.getElementById('session-loading');
+        const errorEl = document.getElementById('session-error');
+        if (loadingEl) loadingEl.style.display = 'block';
+        if (errorEl) errorEl.style.display = 'none';
+
+        try {
+            const [recResp, calResp] = await Promise.all([
+                fetch(`${API_BASE_URL}/info/records/list`, { headers: getAuthHeaders() }),
+                fetch(`${API_BASE_URL}/info/calibrations/list`, { headers: getAuthHeaders() })
+            ]);
+            if (!recResp.ok) throw new Error(`Records: HTTP ${recResp.status}`);
+            if (!calResp.ok) throw new Error(`Calibrations: HTTP ${calResp.status}`);
+            this.records = await recResp.json();
+            this.calibrations = await calResp.json();
+            this.renderSessionList();
+        } catch (error) {
+            console.error('Failed to load session data:', error);
+            if (errorEl) { errorEl.textContent = `Failed to load: ${error.message}`; errorEl.style.display = 'block'; }
+        } finally {
+            if (loadingEl) loadingEl.style.display = 'none';
+        }
+    }
+
+    renderSessionList() {
+        const listEl = document.getElementById('session-list');
+        if (!listEl) return;
+
+        const filter = document.getElementById('session-filter')?.value || 'all';
+        const sortOrder = document.getElementById('session-sort')?.value || 'newest';
+
+        // Build unified entries
+        let entries = [];
+        if (filter !== 'calibrations') {
+            (this.records || []).forEach(r => entries.push({ type: 'record', date: r.datetimeStart || '', data: r }));
+        }
+        if (filter !== 'records') {
+            (this.calibrations || []).forEach(c => entries.push({ type: 'calibration', date: c.datetimeCreated || '', data: c }));
+        }
+
+        if (entries.length === 0) {
+            listEl.innerHTML = '<p class="no-data">No entries found</p>';
+            return;
+        }
+
+        entries.sort((a, b) => {
+            const da = new Date(a.date || 0), db = new Date(b.date || 0);
+            return sortOrder === 'newest' ? db - da : da - db;
+        });
+
+        listEl.innerHTML = entries.map(e => e.type === 'record'
+            ? this._renderRecordRow(e.data)
+            : this._renderCalibrationRow(e.data)
+        ).join('');
+    }
+
+    _renderRecordRow(record) {
+        const uid = this.escapeHtml(record.recordUID || '');
+        const startTime = record.datetimeStart ? new Date(record.datetimeStart).toLocaleString() : 'N/A';
+        const camUID = this.escapeHtml(record.cameraUID || '');
+        const statusClass = record.status === 'completed' ? 'status-finished' :
+                            record.status === 'recording' || record.status === 'started' ? 'status-running' : 'status-other';
+        const status = this.escapeHtml(record.status || 'unknown');
+
+        const endTime = record.datetimeEnd ? new Date(record.datetimeEnd).toLocaleString() : null;
+        const framesRecorded = record.framesRecorded != null ? record.framesRecorded : null;
+        const actualFPS = record.actualFPS != null ? Number(record.actualFPS).toFixed(2) : null;
+        const isActive = record.status === 'recording' || record.status === 'started';
+
+        return `<div class="session-card ${statusClass}" onclick="app.toggleExpand(this)">
+            <div class="session-summary">
+                <span class="session-icon">📹</span>
+                <span class="session-uid">${uid}</span>
+                <span class="session-time">${startTime}</span>
+                ${camUID ? `<span class="session-cam">📷 ${camUID}</span>` : ''}
+                <span class="status-badge ${status}">${status}</span>
+                <span class="expand-arrow">▶</span>
+            </div>
+            <div class="session-details" style="display:none">
+                ${framesRecorded != null ? `<div class="detail-row"><span class="label">Frames:</span><span class="value">${framesRecorded} @ ${actualFPS} FPS</span></div>` : ''}
+                ${record.pipelineUID ? `<div class="detail-row"><span class="label">Pipeline:</span><span class="value"><code>${this.escapeHtml(record.pipelineUID)}</code></span></div>` : ''}
+                ${record.calibrationUID ? `<div class="detail-row"><span class="label">Calibration:</span><span class="value"><code>${this.escapeHtml(record.calibrationUID)}</code></span></div>` : ''}
+                ${record.studyInfoUID ? `<div class="detail-row"><span class="label">Study:</span><span class="value"><code>${this.escapeHtml(record.studyInfoUID)}</code></span></div>` : ''}
+                ${endTime ? `<div class="detail-row"><span class="label">Ended:</span><span class="value">${endTime}</span></div>` : ''}
+                <div class="session-actions">
+                    ${isActive ? `<button class="btn-action btn-stop" onclick="event.stopPropagation();app.stopRecording('${uid}')">⏹️ Stop</button>` : ''}
+                    <button class="btn-action" onclick="event.stopPropagation();app.viewRecordDetails('${uid}')">📊 Details</button>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    _renderCalibrationRow(cal) {
+        const uid = this.escapeHtml(cal.calibrationUID || '');
+        const createdTime = cal.datetimeCreated ? new Date(cal.datetimeCreated).toLocaleString() : 'N/A';
+        const camUID = this.escapeHtml(cal.cameraUID || '');
+        const statusClass = cal.status === 'completed' ? 'status-finished' :
+                            cal.status === 'running'    ? 'status-running'  :
+                            cal.status === 'failed'     ? 'status-failed'   : 'status-other';
+        const status = this.escapeHtml(cal.status || 'unknown');
+
+        const imageSizeStr = (cal.imageSizeWidth && cal.imageSizeHeight)
+            ? `${cal.imageSizeWidth}x${cal.imageSizeHeight}` : null;
+
+        return `<div class="session-card ${statusClass}" onclick="app.toggleExpand(this)">
+            <div class="session-summary">
+                <span class="session-icon">🎯</span>
+                <span class="session-uid">${uid}</span>
+                <span class="session-time">${createdTime}</span>
+                ${camUID ? `<span class="session-cam">📷 ${camUID}</span>` : ''}
+                <span class="status-badge ${status}">${status}</span>
+                <span class="expand-arrow">▶</span>
+            </div>
+            <div class="session-details" style="display:none">
+                ${cal.description ? `<div class="detail-row"><span class="label">Description:</span><span class="value">${this.escapeHtml(cal.description)}</span></div>` : ''}
+                ${cal.avgReprojectionError != null ? `<div class="detail-row"><span class="label">Avg Reprojection Error:</span><span class="value">${cal.avgReprojectionError.toFixed(6)}</span></div>` : ''}
+                ${cal.validFrames != null ? `<div class="detail-row"><span class="label">Valid Frames:</span><span class="value">${cal.validFrames}</span></div>` : ''}
+                ${imageSizeStr ? `<div class="detail-row"><span class="label">Image Size:</span><span class="value">${imageSizeStr}</span></div>` : ''}
+                ${cal.fileUID ? `<div class="detail-row"><span class="label">File UID:</span><span class="value"><code>${this.escapeHtml(cal.fileUID)}</code></span></div>` : ''}
+                <div class="session-actions">
+                    <button class="btn-action" onclick="event.stopPropagation();app.viewCalibrationDetails('${uid}')">📊 Details</button>
+                    ${cal.fileUID ? `<button class="btn-action" onclick="event.stopPropagation();app.downloadFile('${this.escapeHtml(cal.fileUID)}')" >💾 Download</button>` : ''}
+                </div>
+            </div>
+        </div>`;
+    }
+
+    toggleExpand(card) {
+        const details = card.querySelector('.session-details');
+        const arrow = card.querySelector('.expand-arrow');
+        const isOpen = details.style.display !== 'none';
+        details.style.display = isOpen ? 'none' : 'block';
+        if (arrow) arrow.textContent = isOpen ? '▶' : '▼';
+    }
+
+    async viewCalibrationDetails(calibrationUID) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/info/calibrations/get/${encodeURIComponent(calibrationUID)}`, {
+                headers: getAuthHeaders()
+            });
+            if (response.ok) {
+                const cal = await response.json();
+                alert(`Calibration Details:\n${JSON.stringify(cal, null, 2)}`);
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (error) {
+            alert(`Failed to load calibration details: ${error.message}`);
         }
     }
 
@@ -585,89 +804,7 @@ class BugTrackerApp {
         }
     }
 
-    renderRecords() {
-        const recordsListEl = document.getElementById('records-list');
-        
-        if (!recordsListEl) return;
-        
-        if (this.records.length === 0) {
-            recordsListEl.innerHTML = '<p class="no-data">No recording sessions found</p>';
-            return;
-        }
-
-        // Sort records based on selected option
-        const sortSelect = document.getElementById('records-sort');
-        const sortOrder = sortSelect ? sortSelect.value : 'newest';
-        
-        const sortedRecords = [...this.records].sort((a, b) => {
-            const dateA = new Date(a.datetimeStart || 0);
-            const dateB = new Date(b.datetimeStart || 0);
-            return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
-        });
-
-        recordsListEl.innerHTML = sortedRecords.map(record => {
-            const framesRecorded = record.framesRecorded || 0;
-            const actualFPS = record.actualFPS ? record.actualFPS.toFixed(2) : 'N/A';
-            const startTime = record.datetimeStart ? new Date(record.datetimeStart).toLocaleString() : 'N/A';
-            const endTime = record.datetimeEnd ? new Date(record.datetimeEnd).toLocaleString() : 'In Progress';
-            const statusClass = record.status === 'completed' ? 'status-finished' : 
-                               record.status === 'recording' ? 'status-running' : 'status-other';
-            
-            return `
-                <div class="record-card ${statusClass}">
-                    <div class="record-header">
-                        <div class="record-title">
-                            <h3>📹 Recording: ${this.escapeHtml(record.recordUID)}</h3>
-                            <span class="status-badge ${record.status}">${record.status}</span>
-                        </div>
-                        <div class="record-meta">
-                            <span class="duration">${framesRecorded} frames @ ${actualFPS} FPS</span>
-                        </div>
-                    </div>
-                    <div class="record-details">
-                        ${record.pipelineUID ? `
-                        <div class="detail-row">
-                            <span class="label">Pipeline:</span>
-                            <span class="value"><code>${this.escapeHtml(record.pipelineUID)}</code></span>
-                        </div>
-                        ` : ''}
-                        ${record.calibrationUID ? `
-                        <div class="detail-row">
-                            <span class="label">Calibration:</span>
-                            <span class="value"><code>${this.escapeHtml(record.calibrationUID)}</code></span>
-                        </div>
-                        ` : ''}
-                        ${record.studyInfoUID ? `
-                        <div class="detail-row">
-                            <span class="label">Study:</span>
-                            <span class="value"><code>${this.escapeHtml(record.studyInfoUID)}</code></span>
-                        </div>
-                        ` : ''}
-                        <div class="detail-row">
-                            <span class="label">Started:</span>
-                            <span class="value">${startTime}</span>
-                        </div>
-                        ${record.datetimeEnd ? `
-                        <div class="detail-row">
-                            <span class="label">Ended:</span>
-                            <span class="value">${endTime}</span>
-                        </div>
-                        ` : ''}
-                    </div>
-                    <div class="record-actions">
-                        ${(record.status === 'recording' || record.status === 'started') ? `
-                        <button class="btn-action btn-stop" onclick="app.stopRecording('${this.escapeHtml(record.recordUID)}')">
-                            ⏹️ Stop Recording
-                        </button>
-                        ` : ''}
-                        <button class="btn-action" onclick="app.viewRecordDetails('${this.escapeHtml(record.recordUID)}')">
-                            📊 View Details
-                        </button>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
+    renderRecords() { this.renderSessionList(); }
 
     async loadFiles() {
         const loadingEl = document.getElementById('files-loading');
@@ -705,9 +842,9 @@ class BugTrackerApp {
 
     renderFiles() {
         const filesListEl = document.getElementById('files-list');
-        
+
         if (!filesListEl) return;
-        
+
         if (this.files.length === 0) {
             filesListEl.innerHTML = '<p class="no-data">No files found</p>';
             return;
@@ -716,7 +853,7 @@ class BugTrackerApp {
         // Sort files based on selected option
         const sortSelect = document.getElementById('files-sort');
         const sortOrder = sortSelect ? sortSelect.value : 'newest';
-        
+
         const sortedFiles = [...this.files].sort((a, b) => {
             const dateA = new Date(a.datetimeCreated || 0);
             const dateB = new Date(b.datetimeCreated || 0);
@@ -724,49 +861,38 @@ class BugTrackerApp {
         });
 
         filesListEl.innerHTML = sortedFiles.map(file => {
-            const sizeInMB = file.archiveSize ? (file.archiveSize / (1024 * 1024)).toFixed(2) : 'N/A';
+            const uid = this.escapeHtml(file.fileUID || '');
             const createdTime = file.datetimeCreated ? new Date(file.datetimeCreated).toLocaleString() : 'N/A';
-            
-            return `
-                <div class="file-card">
-                    <div class="file-header">
-                        <div class="file-title">
-                            <h3>📦 ${this.escapeHtml(file.fileUID)}</h3>
-                            <span class="file-size">${sizeInMB} MB</span>
-                        </div>
-                    </div>
-                    <div class="file-details">
-                        <div class="detail-row">
-                            <span class="label">Archive Path:</span>
-                            <span class="value"><code>${this.escapeHtml(file.archivePath)}</code></span>
-                        </div>
-                        ${file.recordUID ? `
-                        <div class="detail-row">
-                            <span class="label">Record UID:</span>
-                            <span class="value"><code>${this.escapeHtml(file.recordUID)}</code></span>
-                        </div>
-                        ` : ''}
-                        ${file.cameraUID ? `
-                        <div class="detail-row">
-                            <span class="label">Camera UID:</span>
-                            <span class="value"><code>${this.escapeHtml(file.cameraUID)}</code></span>
-                        </div>
-                        ` : ''}
-                        <div class="detail-row">
-                            <span class="label">Created:</span>
-                            <span class="value">${createdTime}</span>
-                        </div>
-                    </div>
-                    <div class="file-actions">
-                        <button class="btn-action" onclick="app.downloadFile('${this.escapeHtml(file.fileUID)}')">
-                            💾 Download
-                        </button>
-                        <button class="btn-action" onclick="app.viewFileDetails('${this.escapeHtml(file.fileUID)}')">
-                            📊 Details
-                        </button>
+            const sizeInMB = file.archiveSize ? (file.archiveSize / (1024 * 1024)).toFixed(2) + ' MB' : 'N/A';
+            const camUID = this.escapeHtml(file.cameraUID || '');
+
+            // Derive type from recordUID prefix
+            const isCalibration = file.recordUID && file.recordUID.startsWith('cal-');
+            const typeIcon  = isCalibration ? '🎯' : '📹';
+            const typeLabel = isCalibration ? 'Calibration' : 'Record';
+            const statusClass = file.status === 'active' ? 'status-finished' : 'status-other';
+            const status = this.escapeHtml(file.status || 'unknown');
+
+            return `<div class="session-card ${statusClass}" onclick="app.toggleExpand(this)">
+                <div class="session-summary">
+                    <span class="session-icon">📦</span>
+                    <span class="session-uid">${uid}</span>
+                    <span class="session-time">${createdTime}</span>
+                    ${camUID ? `<span class="session-cam">📷 ${camUID}</span>` : ''}
+                    <span class="status-badge ${typeLabel.toLowerCase()}" style="background:#ede9fe;color:#5b21b6">${typeIcon} ${typeLabel}</span>
+                    <span class="status-badge ${status}">${status}</span>
+                    <span class="file-size-badge">${sizeInMB}</span>
+                    <span class="expand-arrow">▶</span>
+                </div>
+                <div class="session-details" style="display:none">
+                    ${file.recordUID ? `<div class="detail-row"><span class="label">${isCalibration ? 'Calibration' : 'Record'} UID:</span><span class="value"><code>${this.escapeHtml(file.recordUID)}</code></span></div>` : ''}
+                    ${file.archivePath ? `<div class="detail-row"><span class="label">Archive Path:</span><span class="value"><code>${this.escapeHtml(file.archivePath)}</code></span></div>` : ''}
+                    <div class="session-actions">
+                        <button class="btn-action" onclick="event.stopPropagation();app.downloadFile('${uid}')">💾 Download</button>
+                        <button class="btn-action" onclick="event.stopPropagation();app.viewFileDetails('${uid}')">📊 Details</button>
                     </div>
                 </div>
-            `;
+            </div>`;
         }).join('');
     }
 

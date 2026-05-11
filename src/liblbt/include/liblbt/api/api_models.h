@@ -115,6 +115,10 @@ struct CalibrationInfo {
     std::string status;
     std::string datetimeCreated;
     std::string fileUID; // link to compressed xml
+    std::optional<double> avgReprojectionError;
+    std::optional<int> validFrames;
+    std::optional<int> imageSizeWidth;
+    std::optional<int> imageSizeHeight;
 
     Json::Value toJson() const {
         Json::Value j;
@@ -124,6 +128,10 @@ struct CalibrationInfo {
         j["datetimeCreated"] = datetimeCreated;
         j["fileUID"] = fileUID;
         setIfPresent(j, "description", description);
+        if (avgReprojectionError) j["avgReprojectionError"] = *avgReprojectionError;
+        if (validFrames)          j["validFrames"]          = *validFrames;
+        if (imageSizeWidth)       j["imageSizeWidth"]       = *imageSizeWidth;
+        if (imageSizeHeight)      j["imageSizeHeight"]      = *imageSizeHeight;
         return j;
     }
     static CalibrationInfo fromJson(const Json::Value& j) {
@@ -133,7 +141,11 @@ struct CalibrationInfo {
         x.status = j.get("status", "").asString();
         x.datetimeCreated = j.get("datetimeCreated", "").asString();
         x.fileUID = j.get("fileUID", "").asString();
-        if (j.isMember("description")) x.description = j["description"].asString();
+        if (j.isMember("description"))          x.description          = j["description"].asString();
+        if (j.isMember("avgReprojectionError")) x.avgReprojectionError = j["avgReprojectionError"].asDouble();
+        if (j.isMember("validFrames"))          x.validFrames          = j["validFrames"].asInt();
+        if (j.isMember("imageSizeWidth"))       x.imageSizeWidth       = j["imageSizeWidth"].asInt();
+        if (j.isMember("imageSizeHeight"))      x.imageSizeHeight      = j["imageSizeHeight"].asInt();
         return x;
     }
 };

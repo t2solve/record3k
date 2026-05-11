@@ -231,14 +231,19 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
                 LOG_INFO << "[DoController::cameraCalibrate Thread] Calibration succeeded! Error: " << result.avgReprojectionError;
                 //we should package the calibration result file as well
                 std::string calUID = makeUID("cal");
+                std::string completedAt = getCurrentTimeISO8601();
                 //TODO check why created 2 time s ? 
                 auto caliInfoResult = lbt::ModelFactory::makeCalibrationInfo(
                     calUID,
                     camUID,
                     desc,
                     result.success ? "completed" : "failed",
-                    now,
-                    "file-rec-" + recordUID
+                    completedAt,
+                    "file-rec-" + recordUID,
+                    result.avgReprojectionError,
+                    result.validFrames,
+                    result.imageSize.width,
+                    result.imageSize.height
                 );
                 
                 if (!caliInfoResult.ok()) {
@@ -259,6 +264,22 @@ void DoController::cameraCalibrate(const HttpRequestPtr& req, std::function<void
 
             } else {
                 LOG_ERROR << "[DoController::cameraCalibrate Thread] Calibration failed: " << result.errorMessage;
+                // Persist a failed entry so the UI shows the failure
+                std::string calUID = makeUID("cal");
+                std::string failedAt = getCurrentTimeISO8601();
+                auto failInfoResult = lbt::ModelFactory::makeCalibrationInfo(
+                    calUID,
+                    camUID,
+                    result.errorMessage.empty() ? desc : std::optional<std::string>(result.errorMessage),
+                    "failed",
+                    failedAt,
+                    "file-rec-" + recordUID
+                );
+                if (failInfoResult.ok()) {
+                    Json::Value failJson = failInfoResult.value().toJson();
+                    infoDataManager().put("calibrations", failInfoResult.value().calibrationUID, failJson);
+                    LOG_INFO << "[DoController::cameraCalibrate Thread] Stored failed calibration info for: " << calUID;
+                }
             }
 
            
@@ -758,7 +779,16 @@ void DoController::cameraTest(const HttpRequestPtr& req, std::function<void (con
             switch (testResult) {
                 case lbt::CameraTestResult::SUCCESS:
                     resultStr = "online";
-                    //TODO update json last seen timestamp
+                    {
+                        // Update datetimeLastSeen in the camera JSON and persist to disk
+                        camInfo.datetimeLastSeen = getCurrentTimeISO8601();
+                        Json::Value updatedCamJson = camInfo.toJson();
+                        if (infoDataManager().put("cameras", camUID, updatedCamJson)) {
+                            LOG_INFO << "[DoController::cameraTest Thread] Updated datetimeLastSeen for: " << camUID;
+                        } else {
+                            LOG_ERROR << "[DoController::cameraTest Thread] Failed to persist datetimeLastSeen for: " << camUID;
+                        }
+                    }
                     break;
                 case lbt::CameraTestResult::ERROR_NOT_FOUND:
                     resultStr = "offline";
@@ -766,7 +796,7 @@ void DoController::cameraTest(const HttpRequestPtr& req, std::function<void (con
                     break;
                 case lbt::CameraTestResult::ERROR_NOT_READY:
                     resultStr = "offline";
-                    errorDetail = "Camera found but not ready";
+                    errorDetail = "Camera found but not ready; Might close VimbaX Viewer if it's open or check camera connection";
                     break;
                 case lbt::CameraTestResult::ERROR_NO_FRAME:
                     resultStr = "offline";

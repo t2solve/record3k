@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Files - Live Bug Tracker 3000</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🐛 Live Bug Tracker 3000</h1>
+            <p class="subtitle">File Archives</p>
+        </header>
+
+        <nav class="main-nav">
+            <a href="index.html" class="nav-link">📷 Cameras</a>
+            <a href="records.html" class="nav-link">📹 Records</a>
+            <a href="files.html" class="nav-link active">📁 Files</a>
+            <a href="start.html" class="nav-link">▶️ Start Recording</a>
+            <a href="settings.html" class="nav-link">⚙️ Settings</a>
+            <a href="http://127.0.0.1:8080/swagger" class="nav-link" target="_blank">📚 API Docs</a>
+        </nav>
+
+        <main>
+            <section class="files-section">
+                <div class="section-header">
+                    <h2>Files</h2>
+                    <div class="header-controls">
+                        <select id="files-sort" class="sort-select">
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                        </select>
+                        <button id="refresh-files-btn" class="btn-refresh">🔄 Refresh</button>
+                    </div>
+                </div>
+
+                <div id="files-loading" class="loading">Loading files...</div>
+                <div id="files-error" class="error" style="display: none;"></div>
+
+                <div id="files-list" class="files-list"></div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Connected to API: <span id="api-status" class="status-disconnected">Checking...</span></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

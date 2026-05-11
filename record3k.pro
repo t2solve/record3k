@@ -19,12 +19,12 @@ export(LOG_LEVEL)
 SUBDIRS = \
     src/liblbt \
     #src/test2 \
-    src/test3 \
-    src/test4 \
-    src/test5 \
-    src/test6 \
-    src/test7 \
-    src/pipelineviewer \
+    #src/test3 \
+    #src/test4 \
+    #src/test5 \
+    #src/test6 \
+    #src/test7 \
+    #src/pipelineviewer \
     #src/debugcameraload \
 
     

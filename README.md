@@ -8,7 +8,7 @@ aim: real time bug tracker with GPU support
 
 ## Summary
 features: 
-* moving object tracking on cameras with 10 FPS and more
+* moving object tracking on cameras with 5 FPS and more
 * configurable data processing pipeline
 * GPU support of Processing steps
 * API Endpoints for controlling

@@ -41,7 +41,7 @@ Json::Value buildSpec() {
     };
     schemas["CameraInfo"]      = simpleObj({{"camUID","string"},{"macAddress","string"},{"description","string"},{"status","string"},{"datetimeLastSeen","string"},{"cameraType","string"}});
     schemas["PipelineInfo"]    = simpleObj({{"pipelineUID","string"},{"description","string"},{"status","string"},{"createdAt","string"},{"fileUID","string"}});
-    schemas["CalibrationInfo"] = simpleObj({{"calibrationUID","string"},{"camUID","string"},{"description","string"},{"status","string"},{"createdAt","string"},{"fileUID","string"}});
+    schemas["CalibrationInfo"] = simpleObj({{"calibrationUID","string"},{"cameraUID","string"},{"description","string"},{"status","string"},{"datetimeCreated","string"},{"fileUID","string"},{"avgReprojectionError","number"},{"validFrames","integer"},{"imageSizeWidth","integer"},{"imageSizeHeight","integer"}});
     schemas["RecordInfo"]      = simpleObj({{"recordUID","string"},{"calibrationUID","string"},{"isTest","boolean"},{"pipelineUID","string"},{"studyInfoUID","string"},{"status","string"},{"durationInSeconds","number"},{"startTime","string"},{"endTime","string"},{"fileUID","string"}});
     schemas["FileInfo"]        = simpleObj({{"fileUID","string"},{"createdAt","string"},{"status","string"},{"description","string"}});
     schemas["StudyMetaInfo"]   = simpleObj({{"studyInfoUID","string"},{"description","string"},{"individualScientificName","string"},{"weightInMg","number"}});
