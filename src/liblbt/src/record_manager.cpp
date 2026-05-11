@@ -18,6 +18,13 @@ RecordManager::RecordManager(RecordConfig config)
     : m_config(std::move(config))
 {
     m_state = State::PREPARATION;
+
+    // Build a stable per-instance log prefix for disambiguation in multi-camera runs.
+    {
+        std::ostringstream ss;
+        ss << "[RecordManager|" << m_config.cameraUID << "|" << m_config.recordUID << "]";
+        m_tag = ss.str();
+    }
     
     // Create output paths
     m_recordDir = std::filesystem::path(m_config.outputDir) / ("file-rec-" + m_config.recordUID);
@@ -35,7 +42,7 @@ RecordManager::RecordManager(RecordConfig config)
         logConfig.saveDebugImages = true;
         
         m_resultLogger = std::make_unique<ResultLogger>(logConfig);
-        std::cout << "[RecordManager] ResultLogger initialized in mode: " 
+        std::cout << m_tag << " ResultLogger initialized in mode: " 
                   << (m_config.logMode == ResultLogger::LogMode::DEBUG ? "DEBUG" : "PRODUCTION") << std::endl;
     }
 }
@@ -53,25 +60,25 @@ bool RecordManager::start() {
     std::lock_guard<std::mutex> lock(m_stateMutex);
     
     if (m_state != State::PREPARATION && m_state != State::STOPPED) {
-        std::cerr << "[RecordManager] Cannot start: invalid state " << getStateString() << std::endl;
+        std::cerr << m_tag << " Cannot start: invalid state " << getStateString() << std::endl;
         return false;
     }
     
     // Validate configuration
     if (!m_config.frameSource) {
-        std::cerr << "[RecordManager] No frame source configured" << std::endl;
+        std::cerr << m_tag << " No frame source configured" << std::endl;
         m_state = State::FAILURE;
         return false;
     }
     
     if (!m_config.frameSource->isReady()) {
-        std::cerr << "[RecordManager] Frame source is not ready" << std::endl;
+        std::cerr << m_tag << " Frame source is not ready" << std::endl;
         m_state = State::FAILURE;
         return false;
     }
     
     if (m_config.pipeline.steps.empty()) {
-        std::cerr << "[RecordManager] No pipeline steps configured" << std::endl;
+        std::cerr << m_tag << " No pipeline steps configured" << std::endl;
         m_state = State::FAILURE;
         return false;
     }
@@ -79,10 +86,10 @@ bool RecordManager::start() {
     // Try to acquire camera lock
     if (!m_config.cameraUID.empty()) {
         if (!RecordManagerLocker::instance().tryLock(m_config.cameraUID, m_config.recordUID)) {
-            std::cerr << "[RecordManager] Camera " << m_config.cameraUID << " is already in use" << std::endl;
+            std::cerr << m_tag << " Camera " << m_config.cameraUID << " is already in use" << std::endl;
             auto lockInfo = RecordManagerLocker::instance().getLockInfo(m_config.cameraUID);
             if (lockInfo) {
-                std::cerr << "[RecordManager] Locked by recording " << lockInfo->recordUID 
+                std::cerr << m_tag << " Locked by recording " << lockInfo->recordUID 
                           << " (state: " << lockInfo->state << ")" << std::endl;
             }
             m_state = State::FAILURE;
@@ -92,7 +99,7 @@ bool RecordManager::start() {
     
     // Create output directory structure
     if (!createOutputStructure()) {
-        std::cerr << "[RecordManager] Failed to create output directory structure" << std::endl;
+        std::cerr << m_tag << " Failed to create output directory structure" << std::endl;
         m_state = State::FAILURE;
         if (!m_config.cameraUID.empty()) {
             RecordManagerLocker::instance().unlock(m_config.cameraUID);
@@ -112,7 +119,7 @@ bool RecordManager::start() {
             "jpg"
         );
         if (added) {
-            std::cout << "[RecordManager] Added FrameWriter to pipeline for DEBUG mode (frames: " << framesPath << ")" << std::endl;
+            std::cout << m_tag << " Added FrameWriter to pipeline for DEBUG mode (frames: " << framesPath << ")" << std::endl;
         } else {
             auto successFlag = false;
             // Reset path if FrameWriter already exists - find its index in the steps vector
@@ -122,7 +129,7 @@ bool RecordManager::start() {
                     // Update the config at the same index
                     if (i < m_config.pipeline.configs.size()) {
                         m_config.pipeline.configs[i].setParameter("output_dir", framesPath);
-                        std::cout << "[RecordManager] Updated existing FrameWriter output directory to: " << framesPath << std::endl;
+                        std::cout << m_tag << " Updated existing FrameWriter output directory to: " << framesPath << std::endl;
                         successFlag = true;
                     }
                     //break;//we do all in case of multiple FrameWriters
@@ -130,15 +137,15 @@ bool RecordManager::start() {
             }
             if (!successFlag) 
             {
-                std::cerr << "[RecordManager] Warning: Failed to update existing FrameWriter output directory" << std::endl;
+                std::cerr << m_tag << " Warning: Failed to update existing FrameWriter output directory" << std::endl;
             }
             else 
             {
-                std::cout << "[RecordManager] FrameWriter already exists in pipeline" << std::endl;
+                std::cout << m_tag << " FrameWriter already exists in pipeline" << std::endl;
             }
         }
     } else {
-        std::cout << "[RecordManager] PRODUCTION mode - skipping FrameWriter to save disk space" << std::endl;
+        std::cout << m_tag << " PRODUCTION mode - skipping FrameWriter to save disk space" << std::endl;
     }
     
     // Reset state
@@ -156,7 +163,7 @@ bool RecordManager::start() {
     // This avoids race conditions when checking state immediately after start()
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     
-    std::cout << "[RecordManager] Recording started for " << m_config.recordUID << std::endl;
+    std::cout << m_tag << " Recording started for " << m_config.recordUID << std::endl;
     return true;
 }
 
@@ -164,9 +171,9 @@ void RecordManager::stop() {
     m_stopRequested = true;
     
     if (m_recordingThread && m_recordingThread->joinable()) {
-        std::cout << "[RecordManager] Waiting for recording thread to finish..." << std::endl;
+        std::cout << m_tag << " Waiting for recording thread to finish..." << std::endl;
         m_recordingThread->join();
-        std::cout << "[RecordManager] Recording thread finished" << std::endl;
+        std::cout << m_tag << " Recording thread finished" << std::endl;
     }
     
     // Update state in locker and release lock
@@ -182,7 +189,16 @@ void RecordManager::stop() {
 
 void RecordManager::recordingLoop() {
     m_state = State::RECORDING;
-    
+
+    // Extend the base tag with this recording thread's ID so concurrent camera
+    // recording threads are distinguishable in the log even on the same camera.
+    std::string rtag;
+    {
+        std::ostringstream ss;
+        ss << rtag << "[TID:" << std::this_thread::get_id() << "]";
+        rtag = ss.str();
+    }
+
     // Open log file in others directory
     std::ofstream logFile((m_othersDir / "log.txt").string());
     auto logToFile = [&logFile](const std::string& message) {
@@ -252,7 +268,7 @@ void RecordManager::recordingLoop() {
                  << ", Duration: " << m_config.totalTimeSeconds << "s"
                  << ", Start Time: " << std::put_time(&tm_buf, "%Y-%m-%dT%H:%M:%SZ");
         
-        std::cout << "[RecordManager] " << startMsg.str() << std::endl;
+        std::cout << rtag << " " << startMsg.str() << std::endl;
         logToFile(startMsg.str());
         
         // Main recording loop
@@ -262,7 +278,7 @@ void RecordManager::recordingLoop() {
             
             // Check if we've reached the target duration
             if (elapsed >= recordDuration) {
-                std::cout << "[RecordManager] Target duration reached" << std::endl;
+                std::cout << rtag << " Target duration reached" << std::endl;
                 break;
             }
             
@@ -270,13 +286,13 @@ void RecordManager::recordingLoop() {
             auto frame = m_config.frameSource->nextFrame();
             if (!frame) {
                 consecutiveFailures++;
-                std::cerr << "[RecordManager] Failed to acquire frame ("
+                std::cerr << rtag << " Failed to acquire frame ("
                           << consecutiveFailures << "/" << maxConsecutiveFailures << ")" << std::endl;
                 logToFile("WARN: Failed to acquire frame (" + std::to_string(consecutiveFailures)
                           + "/" + std::to_string(maxConsecutiveFailures) + ")");
                 if (consecutiveFailures >= maxConsecutiveFailures) {
                     std::string errMsg = "Too many consecutive frame failures, stopping";
-                    std::cerr << "[RecordManager] " << errMsg << std::endl;
+                    std::cerr << rtag << " " << errMsg << std::endl;
                     logToFile("ERROR: " + errMsg);
                     m_state = State::FAILURE;
                     if (!m_config.cameraUID.empty()) {
@@ -319,7 +335,7 @@ void RecordManager::recordingLoop() {
                 frameCounter++;
             } catch (const std::exception& e) {
                 std::string errMsg = std::string("Pipeline processing error: ") + e.what();
-                std::cerr << "[RecordManager] " << errMsg << std::endl;
+                std::cerr << rtag << " " << errMsg << std::endl;
                 logToFile("ERROR: " + errMsg);
                 m_state = State::FAILURE;
                 if (!m_config.cameraUID.empty()) {
@@ -350,7 +366,7 @@ void RecordManager::recordingLoop() {
                 progressMsg << "Progress: " << frameCounter << " frames, "
                           << "Avg FPS: " << std::fixed << std::setprecision(2) << avgFPS
                           << ", Elapsed: " << std::chrono::duration<double>(elapsed).count() << "s";
-                std::cout << "[RecordManager] " << progressMsg.str() << std::endl;
+                std::cout << rtag << " " << progressMsg.str() << std::endl;
                 logToFile(progressMsg.str());
             }
       
@@ -398,7 +414,7 @@ void RecordManager::recordingLoop() {
                     << "  Total duration: " << std::setprecision(3) << totalDuration << "s\n"
                     << "  End time: " << std::put_time(&tm_buf_end, "%Y-%m-%dT%H:%M:%SZ");
             
-            std::cout << "[RecordManager] Recording completed successfully: " 
+            std::cout << rtag << " Recording completed successfully: " 
                       << frameCounter << " frames recorded" << std::endl;
             logToFile(finalMsg.str());
             
@@ -419,7 +435,7 @@ void RecordManager::recordingLoop() {
                              << "\n";
                 }
                 trajFile.close();
-                std::cout << "[RecordManager] Trajectory file written with " << mass_center_list.size() << " points" << std::endl;
+                std::cout << rtag << " Trajectory file written with " << mass_center_list.size() << " points" << std::endl;
                 logToFile("Trajectory file written with " + std::to_string(mass_center_list.size()) + " points");
             }
             
@@ -430,7 +446,7 @@ void RecordManager::recordingLoop() {
             
             // Save metadata
             if (!saveRecordMetadata()) {
-                std::cerr << "[RecordManager] Warning: Failed to save record metadata" << std::endl;
+                std::cerr << rtag << " Warning: Failed to save record metadata" << std::endl;
                 logToFile("WARNING: Failed to save record metadata");
             }
             
@@ -444,7 +460,7 @@ void RecordManager::recordingLoop() {
                 logToFile("Pipeline configuration saved");
             } catch (const std::exception& e) {
                 std::string warnMsg = std::string("Failed to save pipeline config: ") + e.what();
-                std::cerr << "[RecordManager] Warning: " << warnMsg << std::endl;
+                std::cerr << rtag << " Warning: " << warnMsg << std::endl;
                 logToFile("WARNING: " + warnMsg);
             }
         }
@@ -456,7 +472,7 @@ void RecordManager::recordingLoop() {
         
     } catch (const std::exception& e) {
         std::string errMsg = std::string("Recording loop exception: ") + e.what();
-        std::cerr << "[RecordManager] " << errMsg << std::endl;
+        std::cerr << rtag << " " << errMsg << std::endl;
         logToFile("EXCEPTION: " + errMsg);
         m_state = State::FAILURE;
         
@@ -483,11 +499,11 @@ bool RecordManager::createOutputStructure() {
         // Create others subdirectory
         std::filesystem::create_directories(m_othersDir);
         
-        std::cout << "[RecordManager] Created output structure at: " << m_recordDir << std::endl;
+        std::cout << m_tag << " Created output structure at: " << m_recordDir << std::endl;
         return true;
         
     } catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "[RecordManager] Failed to create directory structure: " << e.what() << std::endl;
+        std::cerr << m_tag << " Failed to create directory structure: " << e.what() << std::endl;
         return false;
     }
 }
@@ -538,7 +554,7 @@ bool RecordManager::saveRecordMetadata() {
         std::string recordJsonPath = (m_recordDir / ("record-" + m_config.recordUID + ".json")).string();
         std::ofstream file(recordJsonPath);
         if (!file.is_open()) {
-            std::cerr << "[RecordManager] Failed to open file for writing: " << recordJsonPath << std::endl;
+            std::cerr << m_tag << " Failed to open file for writing: " << recordJsonPath << std::endl;
             return false;
         }
         
@@ -547,11 +563,11 @@ bool RecordManager::saveRecordMetadata() {
         std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
         writer->write(recordJson, &file);
         
-        std::cout << "[RecordManager] Saved record metadata to: " << recordJsonPath << std::endl;
+        std::cout << m_tag << " Saved record metadata to: " << recordJsonPath << std::endl;
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "[RecordManager] Exception saving metadata: " << e.what() << std::endl;
+        std::cerr << m_tag << " Exception saving metadata: " << e.what() << std::endl;
         return false;
     }
 }
@@ -563,9 +579,9 @@ void RecordManager::copyOptionalFiles() {
             std::filesystem::path srcPath(*m_config.calibrationFile);
             std::filesystem::path dstPath = m_othersDir / ("calibration-" + m_config.recordUID + srcPath.extension().string());
             std::filesystem::copy_file(srcPath, dstPath, std::filesystem::copy_options::overwrite_existing);
-            std::cout << "[RecordManager] Copied calibration file to: " << dstPath << std::endl;
+            std::cout << m_tag << " Copied calibration file to: " << dstPath << std::endl;
         } else if (m_config.calibrationFile) {
-            std::cerr << "[RecordManager] Warning: Calibration file not found: " << *m_config.calibrationFile << std::endl;
+            std::cerr << m_tag << " Warning: Calibration file not found: " << *m_config.calibrationFile << std::endl;
         }
         
         // Copy study file if provided (will be included in packed archive)
@@ -573,20 +589,20 @@ void RecordManager::copyOptionalFiles() {
             std::filesystem::path srcPath(*m_config.studyFile);
             std::filesystem::path dstPath = m_recordDir / ("study-" + m_config.recordUID + ".json");
             std::filesystem::copy_file(srcPath, dstPath, std::filesystem::copy_options::overwrite_existing);
-            std::cout << "[RecordManager] Copied study file to record directory: " << dstPath << std::endl;
-            std::cout << "[RecordManager] Study info will be included in packed archive (tar.gz)" << std::endl;
+            std::cout << m_tag << " Copied study file to record directory: " << dstPath << std::endl;
+            std::cout << m_tag << " Study info will be included in packed archive (tar.gz)" << std::endl;
         } else if (m_config.studyFile) {
-            std::cerr << "[RecordManager] Warning: Study file not found: " << *m_config.studyFile << std::endl;
+            std::cerr << m_tag << " Warning: Study file not found: " << *m_config.studyFile << std::endl;
         }
         
     } catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "[RecordManager] Warning: Failed to copy optional files: " << e.what() << std::endl;
+        std::cerr << m_tag << " Warning: Failed to copy optional files: " << e.what() << std::endl;
     }
 }
 
 std::optional<std::filesystem::path> RecordManager::pack() {
     if (m_state != State::STOPPED) {
-        std::cerr << "[RecordManager] Cannot pack: recording must be in STOPPED state, current state: " 
+        std::cerr << m_tag << " Cannot pack: recording must be in STOPPED state, current state: " 
                   << getStateString() << std::endl;
         return std::nullopt;
     }
@@ -610,7 +626,7 @@ std::optional<std::filesystem::path> RecordManager::pack() {
             m_config.recordUID.find('&') != std::string::npos ||
             m_config.recordUID.find('\n') != std::string::npos ||
             m_config.recordUID.find('\r') != std::string::npos) {
-            std::cerr << "[RecordManager] Security: Invalid characters in recordUID" << std::endl;
+            std::cerr << m_tag << " Security: Invalid characters in recordUID" << std::endl;
             m_state = State::FAILURE;
             return std::nullopt;
         }
@@ -622,7 +638,7 @@ std::optional<std::filesystem::path> RecordManager::pack() {
         // Security validation: ensure paths don't contain dangerous characters
         if (parentDir.find('\'') != std::string::npos || parentDir.find('"') != std::string::npos ||
             dirName.find('\'') != std::string::npos || dirName.find('"') != std::string::npos) {
-            std::cerr << "[RecordManager] Security: Invalid characters in path" << std::endl;
+            std::cerr << m_tag << " Security: Invalid characters in path" << std::endl;
             m_state = State::FAILURE;
             return std::nullopt;
         }
@@ -633,24 +649,24 @@ std::optional<std::filesystem::path> RecordManager::pack() {
             << " -C '" << parentDir << "'"
             << " '" << dirName << "'";
         
-        std::cout << "[RecordManager] Packing: " << cmd.str() << std::endl;
+        std::cout << m_tag << " Packing: " << cmd.str() << std::endl;
         
         int result = std::system(cmd.str().c_str());
         if (result != 0) {
-            std::cerr << "[RecordManager] tar command failed with exit code: " << result << std::endl;
+            std::cerr << m_tag << " tar command failed with exit code: " << result << std::endl;
             m_state = State::FAILURE;
             return std::nullopt;
         }
         
         // Verify archive was created
         if (!std::filesystem::exists(archivePath)) {
-            std::cerr << "[RecordManager] Archive not found after packing: " << archivePath << std::endl;
+            std::cerr << m_tag << " Archive not found after packing: " << archivePath << std::endl;
             m_state = State::FAILURE;
             return std::nullopt;
         }
         
-        std::cout << "[RecordManager] Successfully packed to: " << archivePath << std::endl;
-        std::cout << "[RecordManager] Archive size: " << std::filesystem::file_size(archivePath) << " bytes" << std::endl;
+        std::cout << m_tag << " Successfully packed to: " << archivePath << std::endl;
+        std::cout << m_tag << " Archive size: " << std::filesystem::file_size(archivePath) << " bytes" << std::endl;
         
         // Create file info metadata for the packed archive using InfoDataManager (via FileManager callback)
         std::string fileUID = "file-rec-" + m_config.recordUID;
@@ -663,9 +679,9 @@ std::optional<std::filesystem::path> RecordManager::pack() {
         );
         
         if (fileInfoCreated) {
-            std::cout << "[RecordManager] Created FileInfo entry: " << fileUID << std::endl;
+            std::cout << m_tag << " Created FileInfo entry: " << fileUID << std::endl;
         } else {
-            std::cerr << "[RecordManager] Warning: Failed to create FileInfo entry for: " << fileUID << std::endl;
+            std::cerr << m_tag << " Warning: Failed to create FileInfo entry for: " << fileUID << std::endl;
         }
 
 
@@ -673,7 +689,7 @@ std::optional<std::filesystem::path> RecordManager::pack() {
         return archivePath;
         
     } catch (const std::exception& e) {
-        std::cerr << "[RecordManager] Exception during packing: " << e.what() << std::endl;
+        std::cerr << m_tag << " Exception during packing: " << e.what() << std::endl;
         m_state = State::FAILURE;
         return std::nullopt;
     }

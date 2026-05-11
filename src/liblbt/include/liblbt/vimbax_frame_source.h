@@ -130,6 +130,12 @@ private:
     // Example: 5 cameras × 20 000 000 B/s = 100 MB/s < 125 MB/s (1 Gbps NIC).
     int64_t throughputLimitBps_{0};
 
+    // Per-instance log prefix built once in the constructor:
+    //   "[VimbaXFrameSource|<serial>|TID:<id>]"
+    // All logging from this class (including initialize() and startContinuousCapture())
+    // runs on the same background thread that constructed the object.
+    std::string tag_;
+
     // Camera tick frequency (GevTimestampTickFrequency, Hz).
     // Allied Vision GigE = 1,000,000,000 Hz → 1 tick = 1 ns.
     // Read at startup; used to convert raw camera ticks to nanoseconds.

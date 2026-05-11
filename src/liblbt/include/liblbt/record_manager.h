@@ -163,6 +163,12 @@ private:
     std::filesystem::path m_recordDir;      // /tmp/record3k/file-rec-<uid>
     std::filesystem::path m_framesDir;      // /tmp/record3k/file-rec-<uid>/frames
     std::filesystem::path m_othersDir;      // /tmp/record3k/file-rec-<uid>/others
+
+    // Per-instance log prefix: "[RecordManager|<camUID>|<recordUID>]"
+    // Does NOT include TID because the object is used across threads (constructor,
+    // start/stop callers, recording loop).  The recording loop thread appends its
+    // own TID via a local `rtag` variable defined at the top of recordingLoop().
+    std::string m_tag;
     
     // Result logging
     std::unique_ptr<ResultLogger> m_resultLogger;

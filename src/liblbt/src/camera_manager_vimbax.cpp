@@ -28,20 +28,6 @@ namespace lbt {
 #ifdef VIMBAX_ENABLED
 
 // Event observer for VimbaX system and camera events
-class VimbaxEventObserver : public VmbCPP::IFeatureObserver {
-public:
-    void FeatureChanged(const VmbCPP::FeaturePtr& feature) override {
-        if (feature != nullptr) {
-            std::string featureName;
-            VmbInt64_t featureValue = 0;
-            if (feature->GetName(featureName) == VmbErrorSuccess) {
-                feature->GetValue(featureValue);
-                CMV_DEBUG("[VimbaxEventObserver] Event: " << featureName << " = " << featureValue);
-            }
-        }
-    }
-};
-
 // Implementation details hidden with pImpl pattern
 class CameraManagerVimbax::Impl {
 public:
@@ -115,9 +101,6 @@ public:
                 status_.versionMinor = versionInfo.minor;
                 status_.versionPatch = versionInfo.patch;
                 
-                // Create observer instance (keep it alive as a member)
-                eventObserver_ = VmbCPP::IFeatureObserverPtr(new VimbaxEventObserver());
-                CMV_DEBUG("[CameraManagerVimbax] Event observer created");
             }
             
             // Enumerate system components (without holding mutex)
@@ -281,13 +264,7 @@ public:
             cameras_.push_back(info);
         }
         
-        // Release mutex before registering event observers (they may take time)
-        lock.~lock_guard();
-        
-        for (size_t i = 0; i < vmbCameras.size(); ++i) {
-            registerCameraEventObserver(vmbCameras[i], cameras_[i].id);
-        }
-        CMV_DEBUG("[CameraManagerVimbax::updateCameras] Camera discovery and event registration complete");
+        CMV_DEBUG("[CameraManagerVimbax::updateCameras] Camera discovery complete");
     }
     
     bool isDiscoveryComplete() const {
@@ -384,50 +361,12 @@ private:
         }
     }
     
-    void registerCameraEventObserver(const VmbCPP::CameraPtr& camera, const std::string& camId) {
-        if (!eventObserver_) {
-            CMV_DEBUG("[CameraManagerVimbax] No event observer, skipping registration for: " << camId);
-            return;
-        }
-        
-        VmbErrorType err = camera->Open(VmbAccessModeRead);
-        if (err != VmbErrorSuccess) {
-            CMV_DEBUG("[CameraManagerVimbax] Cannot open camera for event registration (err=" << err << "): " << camId);
-            return;
-        }
-        
-        const std::vector<std::string> cameraEvents = {
-            "AcquisitionStart", "AcquisitionEnd", "FrameTrigger", "ExposureEnd", "Error"
-        };
-        
-        VmbCPP::FeaturePtr selectorFeature, notificationFeature;
-        err = camera->GetFeatureByName("EventSelector", selectorFeature);
-        if (err == VmbErrorSuccess) {
-            for (const auto& eventType : cameraEvents) {
-                if (selectorFeature->SetValue(eventType.c_str()) != VmbErrorSuccess) continue;
-                if (camera->GetFeatureByName("EventNotification", notificationFeature) != VmbErrorSuccess) continue;
-                if (notificationFeature->SetValue("On") != VmbErrorSuccess) continue;
-                std::string evFeatName = "Event" + eventType;
-                VmbCPP::FeaturePtr evFeat;
-                if (camera->GetFeatureByName(evFeatName.c_str(), evFeat) == VmbErrorSuccess)
-                    CMV_DEBUG("[CameraManagerVimbax] Event observer registered: " << eventType
-                              << " for " << camId
-                              << " (" << (evFeat->RegisterObserver(eventObserver_) == VmbErrorSuccess ? "ok" : "failed") << ")");
-            }
-        } else {
-            CMV_DEBUG("[CameraManagerVimbax] EventSelector unavailable for " << camId << " (err=" << err << ")");
-        }
-        
-        camera->Close();
-    }
-    
     VmbCPP::VmbSystem& system_;
     bool isStarted_ = false;
     bool discoveryComplete_ = false;
     VimbaXStatus status_;
     std::vector<VimbaXCameraInfo> cameras_;
     mutable std::mutex mutex_;
-    VmbCPP::IFeatureObserverPtr eventObserver_;  // Keep observer alive
 };
 
 #else

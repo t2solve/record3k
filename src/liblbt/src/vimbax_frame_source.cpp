@@ -66,7 +66,7 @@ void VimbaXFrameSource::FrameObserver::FrameReceived(FramePtr frame) {
     // A regression means the SDK callback thread delivered frames out of order,
     // which would silently corrupt any downstream timestamp-based ordering.
     if (ticks != 0 && lastTicks_ != 0 && ticks < lastTicks_) {
-        std::cerr << "[VimbaXFrameSource] WARNING: timestamp regression detected! "
+        std::cerr << "[VimbaXFrameSource::FrameObserver] WARNING: timestamp regression detected! "
                   << "prev=" << lastTicks_ << " cur=" << ticks
                   << " (delta=-" << (lastTicks_ - ticks) << " ticks) "
                   << "— frame order may be violated" << std::endl;
@@ -125,10 +125,19 @@ VimbaXFrameSource::VimbaXFrameSource(const std::string& cameraSerial,
                                      int64_t throughputLimitBps)
     : system_(VmbSystem::GetInstance()), debug_(debugLog), targetFps_(targetFps),
       throughputLimitBps_(throughputLimitBps) {
-    std::cout << "[VimbaXFrameSource] Constructor called (serial='" << cameraSerial 
+    // Build a stable per-instance log prefix that includes the camera identity
+    // and the background thread ID — essential when 5 cameras start concurrently.
+    {
+        std::ostringstream ss;
+        ss << "[VimbaXFrameSource|"
+           << (cameraSerial.empty() ? (cameraIp.empty() ? interfaceIdOrMac : cameraIp) : cameraSerial)
+           << "|TID:" << std::this_thread::get_id() << "]";
+        tag_ = ss.str();
+    }
+    std::cout << tag_ << " Constructor called (serial='" << cameraSerial 
               << "', interface='" << interfaceIdOrMac << "', ip='" << cameraIp << "')" << std::endl;
     ready_ = initialize(cameraSerial, interfaceIdOrMac, cameraIp);
-    std::cout << "[VimbaXFrameSource] Constructor complete, ready=" << ready_ << std::endl;
+    std::cout << tag_ << " Constructor complete, ready=" << ready_ << std::endl;
 }
 
 VimbaXFrameSource::~VimbaXFrameSource() {
@@ -138,42 +147,42 @@ VimbaXFrameSource::~VimbaXFrameSource() {
 bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::string& interfaceIdOrMac, const std::string& cameraIp) {
     VmbErrorType err = VmbErrorSuccess;
     
-    std::cout << "[VimbaXFrameSource] initialize() started" << std::endl;
-    std::cout << "[VimbaXFrameSource] Requested: serial='" << cameraSerial << "', interface/MAC='" << interfaceIdOrMac << "', ip='" << cameraIp << "'" << std::endl;
+    std::cout << tag_ << " initialize() started" << std::endl;
+    std::cout << tag_ << " Requested: serial='" << cameraSerial << "', interface/MAC='" << interfaceIdOrMac << "', ip='" << cameraIp << "'" << std::endl;
     
     // Note: We don't call Startup() here anymore since CameraManagerVimbax singleton manages system lifecycle
     // The system should already be initialized by CameraManagerVimbax::startup()
-    if (debug_) qDebug() << "[VimbaXFrameSource] Using already initialized VmbSystem";
+    if (debug_) qDebug() << tag_ << " Using already initialized VmbSystem";
 
     // Wait a moment for camera discovery to complete (GigE cameras may take time)
-    std::cout << "[VimbaXFrameSource] Waiting 200ms for camera discovery..." << std::endl;
+    std::cout << tag_ << " Waiting 200ms for camera discovery..." << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
 #ifndef DETECT_UNI_CAST_ONLY
     // Pick camera by serial and/or interface id (MAC)
-    std::cout << "[VimbaXFrameSource] Calling GetCameras()..." << std::endl;
+    std::cout << tag_ << " Calling GetCameras()..." << std::endl;
     CameraPtrVector cameras;
     err = system_.GetCameras(cameras);
-    std::cout << "[VimbaXFrameSource] GetCameras() returned, err=" << err << ", count=" << cameras.size() << std::endl;
+    std::cout << tag_ << " GetCameras() returned, err=" << err << ", count=" << cameras.size() << std::endl;
     if (err != VmbErrorSuccess) {
-        std::cerr << "[VimbaXFrameSource] GetCameras failed with error: " << err << std::endl;
-        if (debug_) qWarning() << "[VimbaXFrameSource] GetCameras failed:" << err;
+        std::cerr << tag_ << " GetCameras failed with error: " << err << std::endl;
+        if (debug_) qWarning() << tag_ << " GetCameras failed:" << err;
         // In unicast-only builds this path is never reached, but keep the
         // variable in scope to avoid compiler complaints below.
         return false;
     }
     
     if (cameras.empty()) {
-        std::cout << "[VimbaXFrameSource] No cameras found by GetCameras() — will still attempt Strategy 4 (IP unicast) if ip is set" << std::endl;
-        if (debug_) qDebug() << "[VimbaXFrameSource] GetCameras returned empty — falling through to Strategy 4";
+        std::cout << tag_ << " No cameras found by GetCameras() — will still attempt Strategy 4 (IP unicast) if ip is set" << std::endl;
+        if (debug_) qDebug() << tag_ << " GetCameras returned empty — falling through to Strategy 4";
         // Do NOT return here: fall through so Strategy 4 (IP-based) gets a chance to run
     }
 
-    std::cout << "[VimbaXFrameSource] Searching for matching camera..." << std::endl;
-    std::cout << "[VimbaXFrameSource] Search criteria: serial='" << cameraSerial << "', interface/MAC='" << interfaceIdOrMac << "'" << std::endl;
+    std::cout << tag_ << " Searching for matching camera..." << std::endl;
+    std::cout << tag_ << " Search criteria: serial='" << cameraSerial << "', interface/MAC='" << interfaceIdOrMac << "'" << std::endl;
     
     // First, list all detected cameras for debugging
-    std::cout << "[VimbaXFrameSource] Available cameras:" << std::endl;
+    std::cout << tag_ << " Available cameras:" << std::endl;
     for (size_t i = 0; i < cameras.size(); i++) {
         std::string camId, camSerial, camModel, camInterface, camName;
         cameras[i]->GetID(camId);
@@ -200,17 +209,17 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
             }
         }
         
-        std::cout << "[VimbaXFrameSource]   Camera[" << i << "]:" << std::endl;
-        std::cout << "[VimbaXFrameSource]     Name: " << camName << std::endl;
-        std::cout << "[VimbaXFrameSource]     ID: " << camId << std::endl;
-        std::cout << "[VimbaXFrameSource]     Serial: " << camSerial << std::endl;
-        std::cout << "[VimbaXFrameSource]     Model: " << camModel << std::endl;
-        std::cout << "[VimbaXFrameSource]     Interface: " << camInterface << std::endl;
-        std::cout << "[VimbaXFrameSource]     MAC: " << macAddr << std::endl;
+        std::cout << tag_ << "   Camera[" << i << "]:" << std::endl;
+        std::cout << tag_ << "     Name: " << camName << std::endl;
+        std::cout << tag_ << "     ID: " << camId << std::endl;
+        std::cout << tag_ << "     Serial: " << camSerial << std::endl;
+        std::cout << tag_ << "     Model: " << camModel << std::endl;
+        std::cout << tag_ << "     Interface: " << camInterface << std::endl;
+        std::cout << tag_ << "     MAC: " << macAddr << std::endl;
     }
     
     // Strategy 1: Try exact match on both serial and interface
-    std::cout << "[VimbaXFrameSource] Strategy 1: Trying exact match on serial AND interface..." << std::endl;
+    std::cout << tag_ << " Strategy 1: Trying exact match on serial AND interface..." << std::endl;
     if (!cameraSerial.empty() && !interfaceIdOrMac.empty()) {
         for (auto& cam : cameras) {
             std::string ser, iid;
@@ -218,7 +227,7 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
             cam->GetInterfaceID(iid);
             if (ser == cameraSerial && iid.find(interfaceIdOrMac) != std::string::npos) {
                 camera_ = cam;
-                std::cout << "[VimbaXFrameSource] ✓ Found exact match: " << ser << " on " << iid << std::endl;
+                std::cout << tag_ << " ✓ Found exact match: " << ser << " on " << iid << std::endl;
                 break;
             }
         }
@@ -226,13 +235,13 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
     
     // Strategy 2: Try match by serial only
     if (!camera_ && !cameraSerial.empty()) {
-        std::cout << "[VimbaXFrameSource] Strategy 2: Trying match by serial only..." << std::endl;
+        std::cout << tag_ << " Strategy 2: Trying match by serial only..." << std::endl;
         for (auto& cam : cameras) {
             std::string ser;
             cam->GetSerialNumber(ser);
             if (ser == cameraSerial) {
                 camera_ = cam;
-                std::cout << "[VimbaXFrameSource] ✓ Found match by serial: " << ser << std::endl;
+                std::cout << tag_ << " ✓ Found match by serial: " << ser << std::endl;
                 break;
             }
         }
@@ -240,7 +249,7 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
     
     // Strategy 3: Try match by interface/MAC only
     if (!camera_ && !interfaceIdOrMac.empty()) {
-        std::cout << "[VimbaXFrameSource] Strategy 3: Trying match by interface/MAC only..." << std::endl;
+        std::cout << tag_ << " Strategy 3: Trying match by interface/MAC only..." << std::endl;
         
         // Prepare MAC address without separators for Camera ID matching
         // e.g., "00:0A:47:37:27:77" -> "000A47372777"
@@ -251,7 +260,7 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
             }
         }
         std::string expectedCameraId = "DEV_" + macNoSeparators;
-        std::cout << "[VimbaXFrameSource]   Expected Camera ID from MAC: " << expectedCameraId << std::endl;
+        std::cout << tag_ << "   Expected Camera ID from MAC: " << expectedCameraId << std::endl;
         
         for (auto& cam : cameras) {
             std::string iid, camId;
@@ -285,11 +294,11 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
             if (matchCameraId || matchInterface || matchMAC) {
                 camera_ = cam;
                 if (matchCameraId) {
-                    std::cout << "[VimbaXFrameSource] ✓ Found match by Camera ID: " << camId << std::endl;
+                    std::cout << tag_ << " ✓ Found match by Camera ID: " << camId << std::endl;
                 } else if (matchInterface) {
-                    std::cout << "[VimbaXFrameSource] ✓ Found match by interface: " << iid << std::endl;
+                    std::cout << tag_ << " ✓ Found match by interface: " << iid << std::endl;
                 } else {
-                    std::cout << "[VimbaXFrameSource] ✓ Found match by MAC: " << macAddr << std::endl;
+                    std::cout << tag_ << " ✓ Found match by MAC: " << macAddr << std::endl;
                 }
                 break;
             }
@@ -301,24 +310,24 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
     //     // Only use first available if BOTH serial and interface/MAC are empty
     //     // Otherwise, it means we failed to find the specific camera requested
     //     if (cameraSerial.empty() && interfaceIdOrMac.empty()) {
-    //         std::cout << "[VimbaXFrameSource] Strategy 4: Using first available camera..." << std::endl;
+    //         std::cout << tag_ << " Strategy 4: Using first available camera..." << std::endl;
     //         camera_ = cameras.front();
     //         std::string camId, camSerial;
     //         camera_->GetID(camId);
     //         camera_->GetSerialNumber(camSerial);
-    //         std::cout << "[VimbaXFrameSource] ✓ Using first camera: " << camId << " (S/N: " << camSerial << ")" << std::endl;
-    //         if (debug_) qWarning() << "[VimbaXFrameSource] No match found, using first available camera";
+    //         std::cout << tag_ << " ✓ Using first camera: " << camId << " (S/N: " << camSerial << ")" << std::endl;
+    //         if (debug_) qWarning() << tag_ << " No match found, using first available camera";
     //     } else {
-    //         std::cerr << "[VimbaXFrameSource] ✗ Failed to find camera matching criteria" << std::endl;
-    //         std::cerr << "[VimbaXFrameSource]   Requested serial: '" << cameraSerial << "'" << std::endl;
-    //         std::cerr << "[VimbaXFrameSource]   Requested interface/MAC: '" << interfaceIdOrMac << "'" << std::endl;
-    //         std::cerr << "[VimbaXFrameSource]   Will NOT fallback to first available camera" << std::endl;
+    //         std::cerr << tag_ << " ✗ Failed to find camera matching criteria" << std::endl;
+    //         std::cerr << tag_ << "   Requested serial: '" << cameraSerial << "'" << std::endl;
+    //         std::cerr << tag_ << "   Requested interface/MAC: '" << interfaceIdOrMac << "'" << std::endl;
+    //         std::cerr << tag_ << "   Will NOT fallback to first available camera" << std::endl;
     //         return false;  // Return false instead of using first available camera
     //     }
     // }
 
 #else // DETECT_UNI_CAST_ONLY
-    std::cout << "[VimbaXFrameSource] DETECT_UNI_CAST_ONLY — broadcast strategies 1-3 skipped" << std::endl;
+    std::cout << tag_ << " DETECT_UNI_CAST_ONLY — broadcast strategies 1-3 skipped" << std::endl;
 #endif // !DETECT_UNI_CAST_ONLY
 
     // Strategy 4: IP-based — unicast GVCP probe (reachability check) then bare-IP open.
@@ -328,18 +337,18 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
     //   b) Try OpenCameraByID(ip) — the AVT GigE TL accepts a bare IP string as a
     //      camera ID on older transport layers that do not support writable DeviceIPAddress.
     if (!camera_ && !cameraIp.empty()) {
-        std::cout << "[VimbaXFrameSource] Strategy 4: IP unicast — probing " << cameraIp << " ..." << std::endl;
+        std::cout << tag_ << " Strategy 4: IP unicast — probing " << cameraIp << " ..." << std::endl;
 
         // a) GVCP unicast probe (pure C++, no SDK)
         const auto gev = lbt::VimbaXUnicastDiscovery::probe(cameraIp);
         if (gev.responded) {
-            std::cout << "[VimbaXFrameSource] Strategy 4: DISCOVERY_ACK received"
+            std::cout << tag_ << " Strategy 4: DISCOVERY_ACK received"
                       << "  from=" << gev.fromIp
                       << "  devIP=" << gev.deviceIp
                       << "  MAC=" << gev.deviceMac
                       << "  subnet=" << gev.subnet << std::endl;
         } else {
-            std::cout << "[VimbaXFrameSource] Strategy 4: No GVCP response from " << cameraIp
+            std::cout << tag_ << " Strategy 4: No GVCP response from " << cameraIp
                       << " — camera may still be addressable directly via SDK" << std::endl;
         }
 
@@ -373,17 +382,17 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
                 system_.GetCameras(discardedList);
             }
 
-            std::cout << "[VimbaXFrameSource] Strategy 4: Trying OpenCameraByID(ip='"
+            std::cout << tag_ << " Strategy 4: Trying OpenCameraByID(ip='"
                       << cameraIp << "') attempt " << attempt << "/" << S4_MAX_ATTEMPTS << " ..." << std::endl;
             s4err = system_.OpenCameraByID(cameraIp.c_str(), VmbAccessModeFull, camera_);
             if (s4err == VmbErrorSuccess) {
-                std::cout << "[VimbaXFrameSource] ✓ Strategy 4: Opened camera via bare IP" << std::endl;
+                std::cout << tag_ << " ✓ Strategy 4: Opened camera via bare IP" << std::endl;
                 // Camera is already open — skip camera_->Open() and go straight to frame setup
                 return startContinuousCapture();
             }
-            std::cerr << "[VimbaXFrameSource] ✗ Strategy 4: OpenCameraByID failed (err=" << s4err << ")" << std::endl;
+            std::cerr << tag_ << " ✗ Strategy 4: OpenCameraByID failed (err=" << s4err << ")" << std::endl;
             if (s4err == -12 /*VmbErrorInUse*/ && gev.responded) {
-                std::cerr << "[VimbaXFrameSource]   Camera answered GVCP discovery but is locked "
+                std::cerr << tag_ << "   Camera answered GVCP discovery but is locked "
                              "(err=-12 VmbErrorInUse) — likely held by another process. "
                              "Stop that process or wait for its GigE Vision heartbeat to expire." << std::endl;
             }
@@ -402,16 +411,16 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
     }
 
     if (!camera_) {
-        std::cerr << "[VimbaXFrameSource] ✗ All strategies exhausted — camera not found" << std::endl;
-        std::cerr << "[VimbaXFrameSource]   serial='" << cameraSerial << "', MAC='" << interfaceIdOrMac
+        std::cerr << tag_ << " ✗ All strategies exhausted — camera not found" << std::endl;
+        std::cerr << tag_ << "   serial='" << cameraSerial << "', MAC='" << interfaceIdOrMac
                   << "', ip='" << cameraIp << "'" << std::endl;
         return false;
     }
-    std::cout << "[VimbaXFrameSource] Opening camera..." << std::endl;
+    std::cout << tag_ << " Opening camera..." << std::endl;
     err = camera_->Open(VmbAccessModeFull);
-    std::cout << "[VimbaXFrameSource] Camera open returned, err=" << err << std::endl;
+    std::cout << tag_ << " Camera open returned, err=" << err << std::endl;
     if (err != VmbErrorSuccess) {
-        if (debug_) qWarning() << "[VimbaXFrameSource] Camera open failed:" << err;
+        if (debug_) qWarning() << tag_ << " Camera open failed:" << err;
         return false;
     }
 
@@ -433,9 +442,9 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
                         std::this_thread::sleep_for(std::chrono::milliseconds(10));
                         pktFeature->IsCommandDone(isDone);
                     }
-                    std::cout << "[VimbaXFrameSource] GVSPAdjustPacketSize done" << std::endl;
+                    std::cout << tag_ << " GVSPAdjustPacketSize done" << std::endl;
                 } else {
-                    std::cout << "[VimbaXFrameSource] GVSPAdjustPacketSize returned err=" << pktErr << " (non-fatal)" << std::endl;
+                    std::cout << tag_ << " GVSPAdjustPacketSize returned err=" << pktErr << " (non-fatal)" << std::endl;
                 }
             }
         }
@@ -449,16 +458,16 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
         if (camera_->GetFeatureByName("TriggerMode", trigFeature) == VmbErrorSuccess) {
             VmbErrorType trigErr = trigFeature->SetValue("Off");
             if (trigErr == VmbErrorSuccess) {
-                std::cout << "[VimbaXFrameSource] TriggerMode set to Off" << std::endl;
+                std::cout << tag_ << " TriggerMode set to Off" << std::endl;
             } else {
-                std::cout << "[VimbaXFrameSource] TriggerMode SetValue('Off') err=" << trigErr << " (non-fatal)" << std::endl;
+                std::cout << tag_ << " TriggerMode SetValue('Off') err=" << trigErr << " (non-fatal)" << std::endl;
             }
         }
     }
 
-    std::cout << "[VimbaXFrameSource] Starting continuous capture..." << std::endl;
+    std::cout << tag_ << " Starting continuous capture..." << std::endl;
     bool result = startContinuousCapture();
-    std::cout << "[VimbaXFrameSource] initialize() complete, result=" << result << std::endl;
+    std::cout << tag_ << " initialize() complete, result=" << result << std::endl;
     return result;
 }
 
@@ -483,9 +492,9 @@ void VimbaXFrameSource::shutdown() {
         if (camera_)
             (void)camera_->Close();
     } catch (const std::exception& e) {
-        qWarning() << "[VimbaXFrameSource] Exception during shutdown:" << e.what();
+        qWarning() << tag_ << " Exception during shutdown:" << e.what();
     } catch (...) {
-        qWarning() << "[VimbaXFrameSource] Unknown exception during shutdown";
+        qWarning() << tag_ << " Unknown exception during shutdown";
     }
     // Note: We don't call system_.Shutdown() — CameraManagerVimbax manages lifecycle
     camera_.reset();
@@ -502,7 +511,7 @@ std::unique_ptr<FrameMemoryObject> VimbaXFrameSource::nextFrame() {
     for (int attempt = 0; attempt < maxRetries; ++attempt) {
         auto [frame, ticks] = observer_->waitForFrame(frameTimeoutMs);
         if (!frame) {
-            std::cout << "[VimbaXFrameSource] CaptureFrameWait timeout (attempt "
+            std::cout << tag_ << " CaptureFrameWait timeout (attempt "
                       << (attempt + 1) << "/" << maxRetries << ")" << std::endl;
             continue;
         }
@@ -516,7 +525,7 @@ std::unique_ptr<FrameMemoryObject> VimbaXFrameSource::nextFrame() {
                 static_cast<double>(ticks) * 1e9 / static_cast<double>(tickFreqHz_));
             out.setTimestampNs(tsNs);
         } else {
-            qWarning() << "[VimbaXFrameSource] Camera timestamp unavailable (ticks=0)";
+            qWarning() << tag_ << " Camera timestamp unavailable (ticks=0)";
         }
 
         // Re-queue the slot so the DMA engine can fill it again
@@ -524,7 +533,7 @@ std::unique_ptr<FrameMemoryObject> VimbaXFrameSource::nextFrame() {
         return std::make_unique<FrameMemoryObject>(std::move(out));
     }
 
-    std::cout << "[VimbaXFrameSource] CaptureFrameWait failed after " << maxRetries << " attempts" << std::endl;
+    std::cout << tag_ << " CaptureFrameWait failed after " << maxRetries << " attempts" << std::endl;
     return nullptr;
 }
 
@@ -547,20 +556,20 @@ bool VimbaXFrameSource::startContinuousCapture() {
                     camera_->GetFeatureByName("ChunkEnable",   chunkEnable)   == VmbErrorSuccess) {
                     if (chunkSelector->SetValue("Timestamp") == VmbErrorSuccess &&
                         chunkEnable->SetValue(true)          == VmbErrorSuccess) {
-                        std::cout << "[VimbaXFrameSource] Chunk mode ON (Timestamp chunk enabled)"
+                        std::cout << tag_ << " Chunk mode ON (Timestamp chunk enabled)"
                                      " — Method 1 timestamps will be hardware-precise" << std::endl;
                     } else {
-                        std::cout << "[VimbaXFrameSource] ChunkSelector/ChunkEnable setup failed (non-fatal)" << std::endl;
+                        std::cout << tag_ << " ChunkSelector/ChunkEnable setup failed (non-fatal)" << std::endl;
                     }
                 } else {
-                    std::cout << "[VimbaXFrameSource] ChunkSelector/ChunkEnable features not found (non-fatal)" << std::endl;
+                    std::cout << tag_ << " ChunkSelector/ChunkEnable features not found (non-fatal)" << std::endl;
                 }
             } else {
-                std::cout << "[VimbaXFrameSource] ChunkModeActive SetValue(true) failed (non-fatal)" << std::endl;
+                std::cout << tag_ << " ChunkModeActive SetValue(true) failed (non-fatal)" << std::endl;
             }
         } else {
             if (debug_)
-                std::cout << "[VimbaXFrameSource] ChunkModeActive not found — chunks not supported" << std::endl;
+                std::cout << tag_ << " ChunkModeActive not found — chunks not supported" << std::endl;
         }
     }
 
@@ -577,9 +586,9 @@ bool VimbaXFrameSource::startContinuousCapture() {
             VmbErrorType modeErr = limitModeFeature->SetValue("On");
             modeSet = (modeErr == VmbErrorSuccess);
             if (modeSet)
-                std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimitMode set to On" << std::endl;
+                std::cout << tag_ << " DeviceLinkThroughputLimitMode set to On" << std::endl;
             else
-                std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimitMode SetValue('On') err=" << modeErr
+                std::cout << tag_ << " DeviceLinkThroughputLimitMode SetValue('On') err=" << modeErr
                           << " (non-fatal)" << std::endl;
         }
         if (camera_->GetFeatureByName("DeviceLinkThroughputLimit", limitFeature) == VmbErrorSuccess) {
@@ -589,7 +598,7 @@ bool VimbaXFrameSource::startContinuousCapture() {
             VmbInt64_t minVal = 0, maxVal = 0, incVal = 1;
             limitFeature->GetRange(minVal, maxVal);
             limitFeature->GetIncrement(incVal);
-            std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimit range: ["
+            std::cout << tag_ << " DeviceLinkThroughputLimit range: ["
                       << minVal << ", " << maxVal << "] inc=" << incVal << " B/s" << std::endl;
 
             // Clamp to valid range, then round up to the nearest increment boundary.
@@ -602,26 +611,26 @@ bool VimbaXFrameSource::startContinuousCapture() {
                 clamped = std::min(clamped, maxVal); // ensure still within max
             }
             if (requested < minVal)
-                std::cout << "[VimbaXFrameSource] WARNING: DeviceLinkThroughputLimit requested="
+                std::cout << tag_ << " WARNING: DeviceLinkThroughputLimit requested="
                           << requested << " B/s is below camera minimum " << minVal
                           << " B/s — clamping to minimum" << std::endl;
             else if (requested > maxVal)
-                std::cout << "[VimbaXFrameSource] WARNING: DeviceLinkThroughputLimit requested="
+                std::cout << tag_ << " WARNING: DeviceLinkThroughputLimit requested="
                           << requested << " B/s exceeds camera maximum " << maxVal
                           << " B/s — clamping to maximum" << std::endl;
             else if (clamped != requested)
-                std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimit: requested="
+                std::cout << tag_ << " DeviceLinkThroughputLimit: requested="
                           << requested << " rounded to increment boundary: " << clamped << " B/s" << std::endl;
 
             VmbErrorType limErr = limitFeature->SetValue(clamped);
             if (limErr == VmbErrorSuccess)
-                std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimit set to "
+                std::cout << tag_ << " DeviceLinkThroughputLimit set to "
                           << clamped << " B/s (" << (clamped / 1000000) << " MB/s)" << std::endl;
             else
-                std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimit SetValue(" << clamped
+                std::cout << tag_ << " DeviceLinkThroughputLimit SetValue(" << clamped
                           << ") err=" << limErr << " (non-fatal)" << std::endl;
         } else {
-            std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimit feature not found (non-fatal)" << std::endl;
+            std::cout << tag_ << " DeviceLinkThroughputLimit feature not found (non-fatal)" << std::endl;
         }
     }
 
@@ -629,10 +638,10 @@ bool VimbaXFrameSource::startContinuousCapture() {
     VmbUint32_t payloadSize = 0;
     VmbErrorType err = camera_->GetPayloadSize(payloadSize);
     if (err != VmbErrorSuccess || payloadSize == 0) {
-        qWarning() << "[VimbaXFrameSource] GetPayloadSize failed:" << err;
+        qWarning() << tag_ << " GetPayloadSize failed:" << err;
         return false;
     }
-    std::cout << "[VimbaXFrameSource] Payload size = " << payloadSize << " bytes" << std::endl;
+    std::cout << tag_ << " Payload size = " << payloadSize << " bytes" << std::endl;
 
     // 2. Create the frame observer (bridges async DMA callbacks to pull-based API)
     observer_.reset(new FrameObserver(camera_));
@@ -644,12 +653,12 @@ bool VimbaXFrameSource::startContinuousCapture() {
     for (size_t i = 0; i < kFramePoolSize; ++i) {
         FramePtr frame(new Frame(payloadSize));
         if (frame->RegisterObserver(obsPtr) != VmbErrorSuccess) {
-            qWarning() << "[VimbaXFrameSource] RegisterObserver failed for slot" << i;
+            qWarning() << tag_ << " RegisterObserver failed for slot" << i;
             return false;
         }
         err = camera_->AnnounceFrame(frame);
         if (err != VmbErrorSuccess) {
-            qWarning() << "[VimbaXFrameSource] AnnounceFrame failed for slot" << i << "err=" << err;
+            qWarning() << tag_ << " AnnounceFrame failed for slot" << i << "err=" << err;
             return false;
         }
         framePool_.push_back(frame);
@@ -658,7 +667,7 @@ bool VimbaXFrameSource::startContinuousCapture() {
     // 4. Start DMA capture engine
     err = camera_->StartCapture();
     if (err != VmbErrorSuccess) {
-        qWarning() << "[VimbaXFrameSource] StartCapture failed:" << err;
+        qWarning() << tag_ << " StartCapture failed:" << err;
         return false;
     }
 
@@ -666,7 +675,7 @@ bool VimbaXFrameSource::startContinuousCapture() {
     for (auto& frame : framePool_) {
         err = camera_->QueueFrame(frame);
         if (err != VmbErrorSuccess) {
-            qWarning() << "[VimbaXFrameSource] QueueFrame failed:" << err;
+            qWarning() << tag_ << " QueueFrame failed:" << err;
             camera_->EndCapture();
             return false;
         }
@@ -676,28 +685,28 @@ bool VimbaXFrameSource::startContinuousCapture() {
     FeaturePtr feat;
     if (camera_->GetFeatureByName("AcquisitionFrameRateEnable", feat) == VmbErrorSuccess) {
         if (feat->SetValue(true) == VmbErrorSuccess)
-            std::cout << "[VimbaXFrameSource] AcquisitionFrameRateEnable = true" << std::endl;
+            std::cout << tag_ << " AcquisitionFrameRateEnable = true" << std::endl;
     }
     if (camera_->GetFeatureByName("AcquisitionFrameRate", feat) == VmbErrorSuccess) {
         if (feat->SetValue(targetFps_) == VmbErrorSuccess)
-            std::cout << "[VimbaXFrameSource] AcquisitionFrameRate = " << targetFps_ << std::endl;
+            std::cout << tag_ << " AcquisitionFrameRate = " << targetFps_ << std::endl;
     }
 
     // 7. Issue AcquisitionStart command
     if (camera_->GetFeatureByName("AcquisitionStart", feat) != VmbErrorSuccess) {
-        qWarning() << "[VimbaXFrameSource] Cannot get AcquisitionStart feature";
+        qWarning() << tag_ << " Cannot get AcquisitionStart feature";
         camera_->EndCapture();
         return false;
     }
     err = feat->RunCommand();
     if (err != VmbErrorSuccess) {
-        qWarning() << "[VimbaXFrameSource] AcquisitionStart command failed:" << err;
+        qWarning() << tag_ << " AcquisitionStart command failed:" << err;
         camera_->EndCapture();
         return false;
     }
 
     captureStarted_ = true;
-    std::cout << "[VimbaXFrameSource] Continuous capture started (pool=" << kFramePoolSize
+    std::cout << tag_ << " Continuous capture started (pool=" << kFramePoolSize
               << ", fps=" << targetFps_ << ")" << std::endl;
 
     // 8. Read camera tick frequency so nextFrame() can convert ticks → ns correctly.
@@ -716,7 +725,7 @@ bool VimbaXFrameSource::startContinuousCapture() {
             tickFreqHz_ = static_cast<uint64_t>(rawFreq);
         }
     }
-    std::cout << "[VimbaXFrameSource] Timestamp tick frequency = " << tickFreqHz_ << " Hz" << std::endl;
+    std::cout << tag_ << " Timestamp tick frequency = " << tickFreqHz_ << " Hz" << std::endl;
 
     return true;
 }
