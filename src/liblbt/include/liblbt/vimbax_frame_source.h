@@ -44,7 +44,8 @@ public:
                       const std::string& interfaceIdOrMac,
                       bool debugLog = false,
                       const std::string& cameraIp = "",
-                      double targetFps = 10.0);
+                      double targetFps = 10.0,
+                      int64_t throughputLimitBps = 0);
     ~VimbaXFrameSource() override;
 
     std::unique_ptr<FrameMemoryObject> nextFrame() override;
@@ -123,6 +124,11 @@ private:
     bool ready_{false};
     bool debug_{false};
     double targetFps_{10.0};
+    // When non-zero, DeviceLinkThroughputLimit is programmed to this value
+    // (bytes/s) immediately after the camera is opened.  Keeps total NIC load
+    // within bounds when multiple cameras share the same 1 Gbps interface.
+    // Example: 5 cameras × 20 000 000 B/s = 100 MB/s < 125 MB/s (1 Gbps NIC).
+    int64_t throughputLimitBps_{0};
 
     // Camera tick frequency (GevTimestampTickFrequency, Hz).
     // Allied Vision GigE = 1,000,000,000 Hz → 1 tick = 1 ns.
@@ -135,7 +141,7 @@ private:
 // Stub when Vimba X is not enabled to keep builds green
 class VimbaXFrameSource : public IFrameSource {
 public:
-    VimbaXFrameSource(const std::string&, const std::string&, bool=false, const std::string& = "", double = 10.0) {}
+    VimbaXFrameSource(const std::string&, const std::string&, bool=false, const std::string& = "", double = 10.0, int64_t = 0) {}
     std::unique_ptr<FrameMemoryObject> nextFrame() override { return nullptr; }
     bool isReady() const override { return false; }
 };

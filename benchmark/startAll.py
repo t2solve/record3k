@@ -37,9 +37,13 @@ def parse_args():
     p.add_argument("--token", default="foobartest42")
     p.add_argument("--fps", type=float, default=5.0,
                    help="Target frame rate for all cameras (1–10, default: 5)")
+    p.add_argument("--delay", type=float, default=2.0,
+                   help="Seconds to wait between starting each camera (default: 2)")
     args = p.parse_args()
     if not (1.0 <= args.fps <= 10.0):
         p.error("--fps must be between 1 and 10")
+    if args.delay < 0:
+        p.error("--delay must be >= 0")
     return args
 
 
@@ -110,6 +114,7 @@ def main():
 
     # ---- 4. Start recording on each camera ----
     print(f"[startAll] Target FPS: {args.fps}")
+    print(f"[startAll] Delay between cameras: {args.delay}s")
     active_records = []
     for cam in vimba_cams:
         cam_uid = cam["camUID"]
@@ -135,7 +140,26 @@ def main():
                 continue
         except requests.HTTPError as e:
             print(f"[startAll] ERROR starting {cam_uid}: {e.response.status_code} {e.response.text.strip()}")
+            print(f"[startAll]   Running camera diagnostic test for {cam_uid} ...")
+            try:
+                test_result = post_api(session, base, f"/do/camera/test/{cam_uid}", {})
+                success = test_result.get("success", False)
+                test_res = test_result.get("testResult", "unknown")
+                detail = test_result.get("errorDetail", "")
+                icon = "✓" if success else "✗"
+                print(f"[startAll]   Camera test: {icon} testResult={test_res}"
+                      + (f"  detail={detail}" if detail else ""))
+            except requests.HTTPError as te:
+                print(f"[startAll]   Camera test also failed: {te.response.status_code} {te.response.text.strip()}")
+            except Exception as te:
+                print(f"[startAll]   Camera test request error: {te}")
             continue
+        except requests.exceptions.ConnectionError as e:
+            # The API server closed the connection without a response — it likely
+            # crashed or ran out of threads (too many concurrent recording starts).
+            print(f"[startAll] ERROR starting {cam_uid}: API disconnected — {e}")
+            print(f"[startAll]   The server may have crashed; remaining cameras skipped.")
+            break
         active_records.append({
             "camUID": cam_uid,
             "recordUID": record_uid,
@@ -143,6 +167,9 @@ def main():
             "studyInfoUID": study_uid,
         })
         print(f"[startAll]   ✓ {cam_uid} → recordUID={record_uid}")
+        if args.delay > 0:
+            print(f"[startAll]   Waiting {args.delay}s before next camera...")
+            time.sleep(args.delay)
 
     # ---- 5. Persist active record UIDs ----
     ACTIVE_RECORDS_FILE.write_text(json.dumps(active_records, indent=2))

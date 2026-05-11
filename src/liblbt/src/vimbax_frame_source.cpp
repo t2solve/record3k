@@ -121,8 +121,10 @@ VimbaXFrameSource::VimbaXFrameSource(const std::string& cameraSerial,
                                      const std::string& interfaceIdOrMac,
                                      bool debugLog,
                                      const std::string& cameraIp,
-                                     double targetFps)
-    : system_(VmbSystem::GetInstance()), debug_(debugLog), targetFps_(targetFps) {
+                                     double targetFps,
+                                     int64_t throughputLimitBps)
+    : system_(VmbSystem::GetInstance()), debug_(debugLog), targetFps_(targetFps),
+      throughputLimitBps_(throughputLimitBps) {
     std::cout << "[VimbaXFrameSource] Constructor called (serial='" << cameraSerial 
               << "', interface='" << interfaceIdOrMac << "', ip='" << cameraIp << "')" << std::endl;
     ready_ = initialize(cameraSerial, interfaceIdOrMac, cameraIp);
@@ -557,7 +559,69 @@ bool VimbaXFrameSource::startContinuousCapture() {
                 std::cout << "[VimbaXFrameSource] ChunkModeActive SetValue(true) failed (non-fatal)" << std::endl;
             }
         } else {
-            std::cout << "[VimbaXFrameSource] ChunkModeActive not found — camera may not support chunks" << std::endl;
+            if (debug_)
+                std::cout << "[VimbaXFrameSource] ChunkModeActive not found — chunks not supported" << std::endl;
+        }
+    }
+
+    // 0b. Apply DeviceLinkThroughputLimit to prevent NIC saturation when multiple
+    //     cameras share the same 1 Gbps interface.  Must be done before streaming
+    //     starts so the camera paces its GVSP packets from the first frame.
+    //     Allied Vision feature names (SFNC 2.x / GEV):
+    //       DeviceLinkThroughputLimitMode (Enum) — must be "On" to honour the limit
+    //       DeviceLinkThroughputLimit     (Int)  — bytes/s; capped to DeviceLinkSpeed
+    if (throughputLimitBps_ > 0) {
+        FeaturePtr limitModeFeature, limitFeature;
+        bool modeSet = false;
+        if (camera_->GetFeatureByName("DeviceLinkThroughputLimitMode", limitModeFeature) == VmbErrorSuccess) {
+            VmbErrorType modeErr = limitModeFeature->SetValue("On");
+            modeSet = (modeErr == VmbErrorSuccess);
+            if (modeSet)
+                std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimitMode set to On" << std::endl;
+            else
+                std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimitMode SetValue('On') err=" << modeErr
+                          << " (non-fatal)" << std::endl;
+        }
+        if (camera_->GetFeatureByName("DeviceLinkThroughputLimit", limitFeature) == VmbErrorSuccess) {
+            // Query the feature's valid range and increment so we can clamp the
+            // requested value.  VmbErrorInvalidValue (-11) is returned when the
+            // value is outside [min, max] or not aligned to the increment step.
+            VmbInt64_t minVal = 0, maxVal = 0, incVal = 1;
+            limitFeature->GetRange(minVal, maxVal);
+            limitFeature->GetIncrement(incVal);
+            std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimit range: ["
+                      << minVal << ", " << maxVal << "] inc=" << incVal << " B/s" << std::endl;
+
+            // Clamp to valid range, then round up to the nearest increment boundary.
+            VmbInt64_t requested = static_cast<VmbInt64_t>(throughputLimitBps_);
+            VmbInt64_t clamped   = std::max(minVal, std::min(maxVal, requested));
+            if (incVal > 1) {
+                VmbInt64_t remainder = (clamped - minVal) % incVal;
+                if (remainder != 0)
+                    clamped += incVal - remainder;   // round up to next valid step
+                clamped = std::min(clamped, maxVal); // ensure still within max
+            }
+            if (requested < minVal)
+                std::cout << "[VimbaXFrameSource] WARNING: DeviceLinkThroughputLimit requested="
+                          << requested << " B/s is below camera minimum " << minVal
+                          << " B/s — clamping to minimum" << std::endl;
+            else if (requested > maxVal)
+                std::cout << "[VimbaXFrameSource] WARNING: DeviceLinkThroughputLimit requested="
+                          << requested << " B/s exceeds camera maximum " << maxVal
+                          << " B/s — clamping to maximum" << std::endl;
+            else if (clamped != requested)
+                std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimit: requested="
+                          << requested << " rounded to increment boundary: " << clamped << " B/s" << std::endl;
+
+            VmbErrorType limErr = limitFeature->SetValue(clamped);
+            if (limErr == VmbErrorSuccess)
+                std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimit set to "
+                          << clamped << " B/s (" << (clamped / 1000000) << " MB/s)" << std::endl;
+            else
+                std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimit SetValue(" << clamped
+                          << ") err=" << limErr << " (non-fatal)" << std::endl;
+        } else {
+            std::cout << "[VimbaXFrameSource] DeviceLinkThroughputLimit feature not found (non-fatal)" << std::endl;
         }
     }
 

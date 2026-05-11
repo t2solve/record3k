@@ -45,6 +45,11 @@ struct CameraInfo {
     std::string datetimeLastSeen; // ISO-8601 string
     std::string cameraType; // TYPE_CAM_VIMBA, TYPE_CAM_USB, TYPE_FILE
     std::optional<std::string> ip; // Static/persistent IP for GigE cameras (fallback when broadcast discovery is blocked)
+    // Optional per-camera GigE throughput cap (bytes/s).  When set, the API
+    // programs DeviceLinkThroughputLimit on the camera after open so that the
+    // total NIC load stays within budget (e.g. 20 000 000 for a 1 Gbps switch
+    // shared by 5 cameras).  Zero or absent means "leave camera default".
+    std::optional<int64_t> throughputLimitBps;
 
     Json::Value toJson() const {
         Json::Value j;
@@ -57,6 +62,7 @@ struct CameraInfo {
         if (!cameraType.empty()) j["cameraType"] = cameraType;
         setIfPresent(j, "description", description);
         setIfPresent(j, "ip", ip);
+        if (throughputLimitBps) j["throughputLimitBps"] = static_cast<Json::Int64>(*throughputLimitBps);
         return j;
     }
     static CameraInfo fromJson(const Json::Value& j) {
@@ -70,6 +76,7 @@ struct CameraInfo {
         x.cameraType = j.get("cameraType", "").asString();
         if (j.isMember("description")) x.description = j["description"].asString();
         if (j.isMember("ip")) x.ip = j["ip"].asString();
+        if (j.isMember("throughputLimitBps")) x.throughputLimitBps = j["throughputLimitBps"].asInt64();
         return x;
     }
 };

@@ -34,8 +34,10 @@ std::unique_ptr<IFrameSource> FrameSourceFactory::createFromCameraInfo(
             return nullptr;
         }
 
-        // VimbaXFrameSource(serial, interfaceIdOrMac, debugLog, cameraIp, targetFps)
-        return std::make_unique<VimbaXFrameSource>(serial, mac, debugLog, ip, targetFps);
+        // VimbaXFrameSource(serial, interfaceIdOrMac, debugLog, cameraIp, targetFps, throughputLimitBps)
+        const int64_t throughputLimit = cameraInfo.throughputLimitBps.value_or(20000000); // Default to 20 MBps if not specified
+        std::cout << "[FrameSourceFactory]   Throughput Limit (Bps): " << throughputLimit << std::endl;
+        return std::make_unique<VimbaXFrameSource>(serial, mac, debugLog, ip, targetFps, throughputLimit);
 #else
         std::cerr << "[FrameSourceFactory] ERROR: VimbaX not enabled in build" << std::endl;
         return nullptr;
