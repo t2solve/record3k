@@ -37,8 +37,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends gdb gdbserver
 # Python3 + ping for camera debug scripting (debug_camera_network.py)
 RUN apt-get update && apt-get install -y --no-install-recommends python3 iputils-ping 
 
+# Ensure qmake's PKGCONFIG += opencv4 can find opencv4.pc regardless of base image age
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+
 #build test with production log level (INFO)
 # For debug builds, add: LOG_LEVEL=DEBUG
+RUN pkg-config --modversion opencv4 || (echo "ERROR: opencv4 not found via pkg-config — PKG_CONFIG_PATH=$PKG_CONFIG_PATH" && exit 1)
 RUN cd /app/ && qmake6 CONFIG+=cuda CONFIG+=api CONFIG+=vimbax LOG_LEVEL=INFO record3k.pro 
 RUN cd /app/ && make -j 6
 

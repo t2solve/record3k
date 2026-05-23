@@ -29,11 +29,11 @@ WORKDIR /app
 COPY . .
 # check if the directory exists
 RUN if [ ! -d "opencv" ]; then \
-    clone https://github.com/opencv/opencv.git opencv ; \
+    git clone https://github.com/opencv/opencv.git opencv ; \
     fi
 
 RUN if [ ! -d "opencv_contrib" ]; then \
-    clone https://github.com/opencv/opencv_contrib.git opencv_contrib; \
+    git clone https://github.com/opencv/opencv_contrib.git opencv_contrib; \
     fi
 
 # using ccache for faster builds 
@@ -84,3 +84,6 @@ RUN cd opencv/build && make -j 16 2>&1 | tee /app/opencv_build.log
 RUN cd opencv/build && make install
 # run ldconfig to update the shared library cache
 RUN cd opencv/build && ldconfig
+
+# Ensure pkg-config can find the installed opencv4.pc in subsequent build stages
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH

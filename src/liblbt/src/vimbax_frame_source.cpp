@@ -152,7 +152,7 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
     
     // Note: We don't call Startup() here anymore since CameraManagerVimbax singleton manages system lifecycle
     // The system should already be initialized by CameraManagerVimbax::startup()
-    if (debug_) qDebug() << tag_ << " Using already initialized VmbSystem";
+    if (debug_) qDebug() << tag_.c_str() << " Using already initialized VmbSystem";
 
     // Wait a moment for camera discovery to complete (GigE cameras may take time)
     std::cout << tag_ << " Waiting 200ms for camera discovery..." << std::endl;
@@ -166,7 +166,7 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
     std::cout << tag_ << " GetCameras() returned, err=" << err << ", count=" << cameras.size() << std::endl;
     if (err != VmbErrorSuccess) {
         std::cerr << tag_ << " GetCameras failed with error: " << err << std::endl;
-        if (debug_) qWarning() << tag_ << " GetCameras failed:" << err;
+        if (debug_) qWarning() << tag_.c_str() << " GetCameras failed:" << err;
         // In unicast-only builds this path is never reached, but keep the
         // variable in scope to avoid compiler complaints below.
         return false;
@@ -174,7 +174,7 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
     
     if (cameras.empty()) {
         std::cout << tag_ << " No cameras found by GetCameras() — will still attempt Strategy 4 (IP unicast) if ip is set" << std::endl;
-        if (debug_) qDebug() << tag_ << " GetCameras returned empty — falling through to Strategy 4";
+        if (debug_) qDebug() << tag_.c_str() << " GetCameras returned empty — falling through to Strategy 4";
         // Do NOT return here: fall through so Strategy 4 (IP-based) gets a chance to run
     }
 
@@ -420,7 +420,7 @@ bool VimbaXFrameSource::initialize(const std::string& cameraSerial, const std::s
     err = camera_->Open(VmbAccessModeFull);
     std::cout << tag_ << " Camera open returned, err=" << err << std::endl;
     if (err != VmbErrorSuccess) {
-        if (debug_) qWarning() << tag_ << " Camera open failed:" << err;
+        if (debug_) qWarning() << tag_.c_str() << " Camera open failed:" << err;
         return false;
     }
 
@@ -492,9 +492,9 @@ void VimbaXFrameSource::shutdown() {
         if (camera_)
             (void)camera_->Close();
     } catch (const std::exception& e) {
-        qWarning() << tag_ << " Exception during shutdown:" << e.what();
+        qWarning() << tag_.c_str() << " Exception during shutdown:" << e.what();
     } catch (...) {
-        qWarning() << tag_ << " Unknown exception during shutdown";
+        qWarning() << tag_.c_str() << " Unknown exception during shutdown";
     }
     // Note: We don't call system_.Shutdown() — CameraManagerVimbax manages lifecycle
     camera_.reset();
@@ -525,7 +525,7 @@ std::unique_ptr<FrameMemoryObject> VimbaXFrameSource::nextFrame() {
                 static_cast<double>(ticks) * 1e9 / static_cast<double>(tickFreqHz_));
             out.setTimestampNs(tsNs);
         } else {
-            qWarning() << tag_ << " Camera timestamp unavailable (ticks=0)";
+            qWarning() << tag_.c_str() << " Camera timestamp unavailable (ticks=0)";
         }
 
         // Re-queue the slot so the DMA engine can fill it again
@@ -638,7 +638,7 @@ bool VimbaXFrameSource::startContinuousCapture() {
     VmbUint32_t payloadSize = 0;
     VmbErrorType err = camera_->GetPayloadSize(payloadSize);
     if (err != VmbErrorSuccess || payloadSize == 0) {
-        qWarning() << tag_ << " GetPayloadSize failed:" << err;
+        qWarning() << tag_.c_str() << " GetPayloadSize failed:" << err;
         return false;
     }
     std::cout << tag_ << " Payload size = " << payloadSize << " bytes" << std::endl;
@@ -653,12 +653,12 @@ bool VimbaXFrameSource::startContinuousCapture() {
     for (size_t i = 0; i < kFramePoolSize; ++i) {
         FramePtr frame(new Frame(payloadSize));
         if (frame->RegisterObserver(obsPtr) != VmbErrorSuccess) {
-            qWarning() << tag_ << " RegisterObserver failed for slot" << i;
+            qWarning() << tag_.c_str() << " RegisterObserver failed for slot" << i;
             return false;
         }
         err = camera_->AnnounceFrame(frame);
         if (err != VmbErrorSuccess) {
-            qWarning() << tag_ << " AnnounceFrame failed for slot" << i << "err=" << err;
+            qWarning() << tag_.c_str() << " AnnounceFrame failed for slot" << i << "err=" << err;
             return false;
         }
         framePool_.push_back(frame);
@@ -667,7 +667,7 @@ bool VimbaXFrameSource::startContinuousCapture() {
     // 4. Start DMA capture engine
     err = camera_->StartCapture();
     if (err != VmbErrorSuccess) {
-        qWarning() << tag_ << " StartCapture failed:" << err;
+        qWarning() << tag_.c_str() << " StartCapture failed:" << err;
         return false;
     }
 
@@ -675,7 +675,7 @@ bool VimbaXFrameSource::startContinuousCapture() {
     for (auto& frame : framePool_) {
         err = camera_->QueueFrame(frame);
         if (err != VmbErrorSuccess) {
-            qWarning() << tag_ << " QueueFrame failed:" << err;
+            qWarning() << tag_.c_str() << " QueueFrame failed:" << err;
             camera_->EndCapture();
             return false;
         }
@@ -694,13 +694,13 @@ bool VimbaXFrameSource::startContinuousCapture() {
 
     // 7. Issue AcquisitionStart command
     if (camera_->GetFeatureByName("AcquisitionStart", feat) != VmbErrorSuccess) {
-        qWarning() << tag_ << " Cannot get AcquisitionStart feature";
+        qWarning() << tag_.c_str() << " Cannot get AcquisitionStart feature";
         camera_->EndCapture();
         return false;
     }
     err = feat->RunCommand();
     if (err != VmbErrorSuccess) {
-        qWarning() << tag_ << " AcquisitionStart command failed:" << err;
+        qWarning() << tag_.c_str() << " AcquisitionStart command failed:" << err;
         camera_->EndCapture();
         return false;
     }
