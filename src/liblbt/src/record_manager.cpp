@@ -147,7 +147,27 @@ bool RecordManager::start() {
     } else {
         std::cout << m_tag << " PRODUCTION mode - skipping FrameWriter to save disk space" << std::endl;
     }
-    
+
+    // Add DebugLogger only in DEBUG mode — appended after all pipeline steps so it
+    // sees the full metadata set (contours, centers) populated by upstream steps.
+    if (m_config.logMode == ResultLogger::LogMode::DEBUG) {
+        bool added = ProcessingPipeline::addDebugLoggerIfNotExists(
+            m_config.pipeline.steps,
+            m_config.pipeline.configs
+        );
+        if (added) {
+            std::cout << m_tag << " Added DebugLogger to pipeline for DEBUG mode" << std::endl;
+        } else {
+            // Already present — make sure it is enabled
+            ProcessingPipeline::setDebugLoggerEnabled(
+                m_config.pipeline.configs,
+                m_config.pipeline.steps,
+                true
+            );
+            std::cout << m_tag << " DebugLogger already in pipeline, ensured enabled" << std::endl;
+        }
+    }
+
     // Reset state
     m_stopRequested = false;
     {
@@ -439,6 +459,19 @@ void RecordManager::recordingLoop() {
                 logToFile("Trajectory file written with " + std::to_string(mass_center_list.size()) + " points");
             }
             
+            // Flush DebugLogger to SQLite (DEBUG mode only — step is absent in PRODUCTION)
+            if (m_config.logMode == ResultLogger::LogMode::DEBUG) {
+                std::string dbPath = (m_recordDir / "debug_detections.sqlite").string();
+                bool flushed = ProcessingPipeline::flushDebugLogger(m_config.pipeline.steps, dbPath);
+                if (flushed) {
+                    std::cout << rtag << " Debug detections written to: " << dbPath << std::endl;
+                    logToFile("Debug detections SQLite written to: " + dbPath);
+                } else {
+                    std::cerr << rtag << " Warning: DebugLogger flush failed or no data" << std::endl;
+                    logToFile("WARNING: DebugLogger flush failed or no data");
+                }
+            }
+
             // Write ResultLogger summary
             if (m_resultLogger) {
                 m_resultLogger->writeSummary(frameCounter, totalDuration);

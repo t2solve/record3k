@@ -34,6 +34,7 @@ enum class FilterType {
     MORPHOLOGY_CLOSE, 
     PROJECT_POINT_TO_2D_SURFACE,
     FRAME_WRITER,
+    DEBUG_LOGGER,
     CUSTOM
 };
 

@@ -1,5 +1,6 @@
 #include "processing_pipeline.h"
 #include "process_step_factory.h"
+#include "steps/debug_logger.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -175,19 +176,85 @@ bool ProcessingPipeline::setFrameWriterEnabled(
     std::vector<FilterConfig>& configs,
     const std::vector<std::shared_ptr<ProcessStep>>& steps,
     bool enable) {
-    
+
     // Find the index of FrameWriter step
     for (size_t i = 0; i < steps.size(); ++i) {
         if (steps[i] && steps[i]->getFilterType() == FilterType::FRAME_WRITER) {
             if (i < configs.size()) {
                 configs[i].setParameter("enabled", enable);
-                std::cout << "[ProcessingPipeline] FrameWriter " 
+                std::cout << "[ProcessingPipeline] FrameWriter "
                          << (enable ? "enabled" : "disabled") << std::endl;
                 return true;
             }
         }
     }
-    
+
     std::cerr << "[ProcessingPipeline] FrameWriter not found in pipeline" << std::endl;
     return false;
+}
+
+bool ProcessingPipeline::addDebugLoggerIfNotExists(
+    std::vector<std::shared_ptr<ProcessStep>>& steps,
+    std::vector<FilterConfig>& configs,
+    ProcessingMode mode) {
+
+    if (hasProcessingStep(steps, FilterType::DEBUG_LOGGER)) {
+        std::cout << "[ProcessingPipeline] DebugLogger already exists in pipeline" << std::endl;
+        return false;
+    }
+
+    auto logger = ProcessStepFactory::createStep(FilterType::DEBUG_LOGGER, mode);
+    if (!logger) {
+        std::cerr << "[ProcessingPipeline] Failed to create DebugLogger step" << std::endl;
+        return false;
+    }
+
+    FilterConfig cfg;
+    cfg.setParameter("enabled", true);
+
+    // Append at the end so it sees all metadata set by upstream steps
+    steps.push_back(logger);
+    configs.push_back(cfg);
+
+    std::cout << "[ProcessingPipeline] Added DebugLogger at end of pipeline" << std::endl;
+    return true;
+}
+
+bool ProcessingPipeline::setDebugLoggerEnabled(
+    std::vector<FilterConfig>& configs,
+    const std::vector<std::shared_ptr<ProcessStep>>& steps,
+    bool enable) {
+
+    for (size_t i = 0; i < steps.size(); ++i) {
+        if (steps[i] && steps[i]->getFilterType() == FilterType::DEBUG_LOGGER) {
+            if (i < configs.size()) {
+                configs[i].setParameter("enabled", enable);
+                std::cout << "[ProcessingPipeline] DebugLogger "
+                          << (enable ? "enabled" : "disabled") << std::endl;
+                return true;
+            }
+        }
+    }
+
+    std::cerr << "[ProcessingPipeline] DebugLogger not found in pipeline" << std::endl;
+    return false;
+}
+
+bool ProcessingPipeline::flushDebugLogger(
+    const std::vector<std::shared_ptr<ProcessStep>>& steps,
+    const std::string& dbPath) {
+
+    auto step = getProcessingStep(steps, FilterType::DEBUG_LOGGER);
+    if (!step) {
+        std::cerr << "[ProcessingPipeline] flushDebugLogger: DebugLogger not found" << std::endl;
+        return false;
+    }
+
+    auto* logger = dynamic_cast<DebugLoggerStep*>(step.get());
+    if (!logger) {
+        std::cerr << "[ProcessingPipeline] flushDebugLogger: cast failed" << std::endl;
+        return false;
+    }
+
+    return logger->flush(dbPath);
 }

@@ -101,6 +101,34 @@ public:
         std::vector<FilterConfig>& configs,
         const std::vector<std::shared_ptr<ProcessStep>>& steps,
         bool enable);
+
+    /**
+     * @brief Add DebugLogger step at the end of the pipeline if not already present.
+     *        Should be called only when debug mode is active.
+     */
+    static bool addDebugLoggerIfNotExists(
+        std::vector<std::shared_ptr<ProcessStep>>& steps,
+        std::vector<FilterConfig>& configs,
+        ProcessingMode mode = ProcessingMode::CPU_ONLY);
+
+    /**
+     * @brief Enable or disable the DebugLogger step via its config.
+     */
+    static bool setDebugLoggerEnabled(
+        std::vector<FilterConfig>& configs,
+        const std::vector<std::shared_ptr<ProcessStep>>& steps,
+        bool enable);
+
+    /**
+     * @brief Flush accumulated debug data to a SQLite file.
+     *        Call this at the end of a recording session.
+     * @param steps  Pipeline step vector (used to locate the DebugLoggerStep)
+     * @param dbPath Full path to the output .sqlite file
+     * @return true on success
+     */
+    static bool flushDebugLogger(
+        const std::vector<std::shared_ptr<ProcessStep>>& steps,
+        const std::string& dbPath);
     
 private:
     /**

@@ -31,6 +31,7 @@ static int cudaDeviceCountSafe() noexcept {
 #include "steps/morphology_close.h" 
 #include "steps/project_point_to_2d_surface.h"
 #include "steps/frame_writer.h"
+#include "steps/debug_logger.h"
 
 std::shared_ptr<ProcessStep> ProcessStepFactory::createProjectPointTo2DSurface(ProcessingMode mode) {
     switch (mode) {
@@ -292,6 +293,11 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createFrameWriter(ProcessingMod
     return std::make_shared<FrameWriterCPUStep>();
 }
 
+std::shared_ptr<ProcessStep> ProcessStepFactory::createDebugLogger(ProcessingMode mode) {
+    (void)mode;
+    return std::make_shared<DebugLoggerStep>();
+}
+
 std::shared_ptr<ProcessStep> ProcessStepFactory::createStep(FilterType filterType, ProcessingMode mode) {
     switch (filterType) {
         case FilterType::GAUSSIAN_BLUR:
@@ -330,6 +336,8 @@ std::shared_ptr<ProcessStep> ProcessStepFactory::createStep(FilterType filterTyp
             return createMorphologyClose(mode);
         case FilterType::FRAME_WRITER:
             return createFrameWriter(mode);
+        case FilterType::DEBUG_LOGGER:
+            return createDebugLogger(mode);
         case FilterType::NONE:
         case FilterType::CUSTOM:
         default:
@@ -371,6 +379,8 @@ FilterType ProcessStepFactory::nameToFilterType(const std::string& stepName) {
         return FilterType::MORPHOLOGY_CLOSE;
     if (n.find("framewriter") != std::string::npos || n.find("frame_writer") != std::string::npos || n.find("saveframe") != std::string::npos)
         return FilterType::FRAME_WRITER;
+    if (n.find("debuglogger") != std::string::npos || n.find("debug_logger") != std::string::npos)
+        return FilterType::DEBUG_LOGGER;
     return FilterType::NONE;
 }
 
@@ -394,6 +404,7 @@ std::string ProcessStepFactory::filterTypeBaseName(FilterType filterType) {
     case FilterType::PROJECT_POINT_TO_2D_SURFACE: return "ProjectPointTo2DSurface";
         case FilterType::MORPHOLOGY_CLOSE: return "MorphologyClose";
         case FilterType::FRAME_WRITER: return "FrameWriter";
+        case FilterType::DEBUG_LOGGER: return "DebugLogger";
         case FilterType::NONE:
         case FilterType::CUSTOM:
         default: return "UNKNOWN";

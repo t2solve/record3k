@@ -4,7 +4,9 @@
 set -euo pipefail
 
 # need debian packages:
-# pkg-config libdrogon-dev qt6-base-dev qmake6 
+# pkg-config libdrogon-dev qt6-base-dev qmake6 libjsoncpp-dev
+# TODO build opencv from source
+
 
 
 # run : e.g. /localBuild.sh --no-cuda --no-vimbax -j 8 

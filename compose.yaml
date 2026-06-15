@@ -20,7 +20,7 @@
 #   podman-compose up -d               # detached
 #   podman-compose logs -f api         # follow API logs
 #   podman-compose down                # stop and remove containers
-#
+#   podman exec -it record3k-api bash # shell into the API container
 # Quick-start (seed data directories once):
 #   mkdir -p data/{cameras,calibrations,pipelines,records,files,studies} logs
 #   cp -r config/examples/intialrun/data/* data/

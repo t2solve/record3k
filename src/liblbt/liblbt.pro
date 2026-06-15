@@ -34,7 +34,7 @@ HEADERS += \
 
 # Link jsoncpp for JsonStore used inside the library
 CONFIG += link_pkgconfig
-PKGCONFIG += jsoncpp
+PKGCONFIG += jsoncpp sqlite3
 
 # Or for static library
 # CONFIG += static
