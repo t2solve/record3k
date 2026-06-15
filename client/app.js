@@ -913,7 +913,23 @@ class BugTrackerApp {
     }
 
     async downloadFile(fileUID) {
-        window.open(`${API_BASE_URL}/files/download/${fileUID}`, '_blank');
+        try {
+            const response = await fetch(`${API_BASE_URL}/get/file/binary/${fileUID}`, {
+                headers: getAuthHeaders()
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${fileUID}.tar.gz`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            alert(`Download failed: ${error.message}`);
+        }
     }
 
     async viewRecordDetails(recordUID) {

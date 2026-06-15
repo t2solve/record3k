@@ -1,6 +1,7 @@
 # record3k — Podman Compose
+# maybe do  export CONTAINERS_CONF=~/.config/containers/containers.conf
 # OLD: podman rm -f record3k-api record3k-client 
-# RUN+BUILD: podman-compose up --build
+# RUN+BUILD: podman --runtime /usr/bin/runc compose up --build
 # LOGIN: podman exec -it record3k-api bash
 # COPY new Config files: podman cp ./config/examples/intialrun/data/cameras/cam-3-hometest.json record3k-api:/app/bin/data/cameras/
 # WATCH GPU: watch podman exec -it record3k-api nvidia-smi
@@ -83,11 +84,12 @@ services:
     #   Passes kernel device nodes only — does NOT inject CUDA userspace
     #   libraries. NVIDIA_VISIBLE_DEVICES will be ignored without the OCI hook.
     #
-    # Active: Option A (CDI)
+    # Preferred: CDI device alias (requires nvidia-ctk). This lets Podman
+    # inject the NVIDIA userspace libraries into the container automatically.
     devices:
       - nvidia.com/gpu=all
 
-    # Fallback Option B (uncomment and remove Option A above if CDI is unavailable):
+    # Fallback (manual device nodes) — uncomment if you cannot install nvidia-ctk:
     # devices:
     #   - /dev/nvidia0
     #   - /dev/nvidiactl

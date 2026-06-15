@@ -10,6 +10,7 @@
 #include <QImage>
 #include <QDir>
 #include <QFileInfo>
+#include <QDialogButtonBox>
 #include <QProgressDialog>
 #include <QTextEdit>
 #include <QStatusBar>
@@ -600,7 +601,7 @@ QImage MainWindow::matToQImage(const cv::Mat& mat) {
 }
 
 void MainWindow::loadConfiguration() {
-    workDir_ = settings_.value("working/directory", "/tmp/pipelineviewer").toString();
+    workDir_ = settings_.value("working/directory", "~/tmp/pipelineviewer").toString();
 }
 
 void MainWindow::ensureWorkDir() {
