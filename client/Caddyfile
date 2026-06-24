@@ -13,7 +13,12 @@
     # (e.g. /info/cameras/list) are reached correctly.
     handle /api/* {
         uri strip_prefix /api
-        reverse_proxy localhost:8080
+        reverse_proxy localhost:8080 {
+            # Stream the upstream response immediately without buffering.
+            # Required for large file downloads — without this Caddy holds
+            # the full response in memory before forwarding to the browser.
+            flush_interval -1
+        }
     }
 
     # Serve static web files for everything else.

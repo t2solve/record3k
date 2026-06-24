@@ -11,7 +11,9 @@
     # Proxy /api/* to Drogon, stripping the /api prefix.
     handle /api/* {
         uri strip_prefix /api
-        reverse_proxy localhost:8080
+        reverse_proxy localhost:8080 {
+            flush_interval -1
+        }
     }
 
     # Serve static web files for everything else.
