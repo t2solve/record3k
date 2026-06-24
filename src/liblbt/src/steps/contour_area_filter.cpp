@@ -120,7 +120,7 @@ FrameMemoryObject ContourAreaFilterCUDAStep::process(const FrameMemoryObject& in
     cv::Mat cpuMat = input.getCpuMat();
     
     // Get config parameters
-    double minArea = config.getParameter("min_area", 80.0);
+    double minArea = config.getParameter("min_area", 150.0);
     double maxArea = config.getParameter("max_area", 300000.0);
     bool debug = config.getParameter("debug", 0.0) > 0.5; // when true, draw overlays
     
