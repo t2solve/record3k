@@ -1,5 +1,42 @@
 #include "contour_area_filter.h"
+#include <algorithm>
+#include <numeric>
 #include <sstream>
+
+// Keep only the N largest contours (by area). N=0 means keep all.
+// Reorders all three parallel vectors together.
+static void selectLargestContours(
+    int maxContours,
+    std::vector<std::vector<cv::Point>>& contours,
+    std::vector<cv::RotatedRect>& rects,
+    std::vector<cv::Point2f>& centers)
+{
+    if (maxContours <= 0 || static_cast<int>(contours.size()) <= maxContours)
+        return;
+
+    // Sort indices by contour area descending
+    std::vector<int> idx(contours.size());
+    std::iota(idx.begin(), idx.end(), 0);
+    std::sort(idx.begin(), idx.end(), [&](int a, int b) {
+        return cv::contourArea(contours[a]) > cv::contourArea(contours[b]);
+    });
+    idx.resize(static_cast<size_t>(maxContours));
+
+    std::vector<std::vector<cv::Point>> selContours;
+    std::vector<cv::RotatedRect>        selRects;
+    std::vector<cv::Point2f>            selCenters;
+    selContours.reserve(idx.size());
+    selRects.reserve(idx.size());
+    selCenters.reserve(idx.size());
+    for (int i : idx) {
+        selContours.push_back(std::move(contours[i]));
+        selRects.push_back(rects[i]);
+        selCenters.push_back(centers[i]);
+    }
+    contours = std::move(selContours);
+    rects    = std::move(selRects);
+    centers  = std::move(selCenters);
+}
 
 FrameMemoryObject ContourAreaFilterCPUStep::process(const FrameMemoryObject& input, const FilterConfig& config) {
     if (input.isEmpty()) {
@@ -9,27 +46,26 @@ FrameMemoryObject ContourAreaFilterCPUStep::process(const FrameMemoryObject& inp
     cv::Mat inputMat = input.getCpuMat();
     
     // Get config parameters
-    double minArea = config.getParameter("min_area", 150.0);
-    double maxArea = config.getParameter("max_area", 300000.0);
-    bool debug = config.getParameter("debug", 0.0) > 0.5; // when true, draw overlays
-    
+    double minArea    = config.getParameter("min_area",     150.0);
+    double maxArea    = config.getParameter("max_area",     300000.0);
+    int    maxContours = static_cast<int>(config.getParameter("max_contours", 0.0)); // 0 = keep all
+    bool   debug      = config.getParameter("debug", 0.0) > 0.5;
+
     // Find all contours
     std::vector<std::vector<cv::Point>> contours;
     std::vector<cv::Vec4i> hierarchy;
-    cv::findContours(inputMat.clone(), contours, hierarchy, 
+    cv::findContours(inputMat.clone(), contours, hierarchy,
                      cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-    
-    int originalCount = contours.size();
 
-    
+    int originalCount = static_cast<int>(contours.size());
+
     // Filter contours by area
     std::vector<std::vector<cv::Point>> filteredContours;
     std::vector<cv::RotatedRect> minRects;
     std::vector<cv::Point2f> centers;
-    
+
     for (const auto& contour : contours) {
         double area = cv::contourArea(contour);
-        
         if (area >= minArea && area <= maxArea) {
             filteredContours.push_back(contour);
             cv::RotatedRect rect = cv::minAreaRect(contour);
@@ -37,23 +73,28 @@ FrameMemoryObject ContourAreaFilterCPUStep::process(const FrameMemoryObject& inp
             centers.push_back(rect.center);
         }
     }
-    //we do need a test here if no courts are left after filtering?
-    if (filteredContours.empty() ) {
+
+    // area_filter_count: how many passed the area gate (used for η / multi-contour metric)
+    int areaFilterCount = static_cast<int>(filteredContours.size());
+
+    // Select only the N largest if max_contours > 0 (prevents centroid smear)
+    selectLargestContours(maxContours, filteredContours, minRects, centers);
+
+    if (filteredContours.empty()) {
         std::stringstream ss;
-        ss << "[ContourAreaFilterCPUStep] Warning: No contours left after filtering with min_area=" 
+        ss << "[ContourAreaFilterCPUStep] Warning: No contours left after filtering with min_area="
            << minArea << " and max_area=" << maxArea;
         logWarning(ss.str());
         if (originalCount > 0) {
             std::stringstream debugSs;
             debugSs << "  Original contour count was " << originalCount;
             logDebug(debugSs.str());
-            //we iterate the original contours and print their areas
             for (size_t i = 0; i < contours.size(); ++i) {
                 double area = cv::contourArea(contours[i]);
                 std::stringstream areaSs;
                 areaSs << "    Contour " << i << " area: " << area;
                 logDebug(areaSs.str());
-            }   
+            }
         }
     }
     
@@ -86,16 +127,17 @@ FrameMemoryObject ContourAreaFilterCPUStep::process(const FrameMemoryObject& inp
     }
     
     FrameMemoryObject frameResult(result);
-    
+
     // Add metadata
-    frameResult.setMetadata<int>("original_contour_count", originalCount);
-    frameResult.setMetadata<int>("filtered_contour_count", static_cast<int>(filteredContours.size()));
-    frameResult.setMetadata<double>("min_area_threshold", minArea);
-    frameResult.setMetadata<double>("max_area_threshold", maxArea);
-    frameResult.setMetadata<std::vector<std::vector<cv::Point>>>("filtered_contours", filteredContours);
-    frameResult.setMetadata<std::vector<cv::RotatedRect>>("filtered_contour_rects", minRects);
-    frameResult.setMetadata<std::vector<cv::Point2f>>("filtered_contour_centers", centers);
-    
+    frameResult.setMetadata<int>("original_contour_count",  originalCount);
+    frameResult.setMetadata<int>("area_filter_count",        areaFilterCount);  // before max_contours; use for η
+    frameResult.setMetadata<int>("filtered_contour_count",   static_cast<int>(filteredContours.size()));
+    frameResult.setMetadata<double>("min_area_threshold",    minArea);
+    frameResult.setMetadata<double>("max_area_threshold",    maxArea);
+    frameResult.setMetadata<std::vector<std::vector<cv::Point>>>("filtered_contours",        filteredContours);
+    frameResult.setMetadata<std::vector<cv::RotatedRect>>        ("filtered_contour_rects",  minRects);
+    frameResult.setMetadata<std::vector<cv::Point2f>>            ("filtered_contour_centers",centers);
+
     return frameResult;
 }
 
@@ -120,25 +162,26 @@ FrameMemoryObject ContourAreaFilterCUDAStep::process(const FrameMemoryObject& in
     cv::Mat cpuMat = input.getCpuMat();
     
     // Get config parameters
-    double minArea = config.getParameter("min_area", 150.0);
-    double maxArea = config.getParameter("max_area", 300000.0);
-    bool debug = config.getParameter("debug", 0.0) > 0.5; // when true, draw overlays
-    
-    // Find all contours (on CPU)
+    double minArea     = config.getParameter("min_area",     150.0);
+    double maxArea     = config.getParameter("max_area",     300000.0);
+    int    maxContours = static_cast<int>(config.getParameter("max_contours", 0.0)); // 0 = keep all
+    bool   debug       = config.getParameter("debug", 0.0) > 0.5;
+
+    // Find all contours (on CPU — OpenCV CUDA has no findContours)
     std::vector<std::vector<cv::Point>> contours;
     std::vector<cv::Vec4i> hierarchy;
-    cv::findContours(cpuMat.clone(), contours, hierarchy, 
+    cv::findContours(cpuMat.clone(), contours, hierarchy,
                      cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-    
-    int originalCount = contours.size();
+
+    int originalCount = static_cast<int>(contours.size());
+
     // Filter contours by area
     std::vector<std::vector<cv::Point>> filteredContours;
     std::vector<cv::RotatedRect> minRects;
     std::vector<cv::Point2f> centers;
-    
+
     for (const auto& contour : contours) {
         double area = cv::contourArea(contour);
-        
         if (area >= minArea && area <= maxArea) {
             filteredContours.push_back(contour);
             cv::RotatedRect rect = cv::minAreaRect(contour);
@@ -146,23 +189,28 @@ FrameMemoryObject ContourAreaFilterCUDAStep::process(const FrameMemoryObject& in
             centers.push_back(rect.center);
         }
     }
-    //we do need a test here if no courts are left after filtering?
-    if (filteredContours.empty() ) {
+
+    // area_filter_count: how many passed the area gate (used for η / multi-contour metric)
+    int areaFilterCount = static_cast<int>(filteredContours.size());
+
+    // Select only the N largest if max_contours > 0 (prevents centroid smear)
+    selectLargestContours(maxContours, filteredContours, minRects, centers);
+
+    if (filteredContours.empty()) {
         std::stringstream ss;
-        ss << "[ContourAreaFilterCUDAStep] Warning: No contours left after filtering with min_area=" 
+        ss << "[ContourAreaFilterCUDAStep] Warning: No contours left after filtering with min_area="
            << minArea << " and max_area=" << maxArea;
         logWarning(ss.str());
         if (originalCount > 0) {
             std::stringstream debugSs;
             debugSs << "  Original contour count was " << originalCount;
             logDebug(debugSs.str());
-            //we iterte the original contours and print their areas
             for (size_t i = 0; i < contours.size(); ++i) {
                 double area = cv::contourArea(contours[i]);
                 std::stringstream areaSs;
                 areaSs << "    Contour " << i << " area: " << area;
                 logDebug(areaSs.str());
-            }   
+            }
         }
     }
 
@@ -196,16 +244,16 @@ FrameMemoryObject ContourAreaFilterCUDAStep::process(const FrameMemoryObject& in
     }
 
     FrameMemoryObject frameResult(resultGpu);
-    
+
     // Add metadata
-    frameResult.setMetadata<int>("original_contour_count", originalCount);
-    frameResult.setMetadata<int>("filtered_contour_count", static_cast<int>(filteredContours.size()));
-    frameResult.setMetadata<double>("min_area_threshold", minArea);
-    frameResult.setMetadata<double>("max_area_threshold", maxArea);
-    frameResult.setMetadata<std::vector<std::vector<cv::Point>>>("filtered_contours", filteredContours);
-    frameResult.setMetadata<std::vector<cv::RotatedRect>>("filtered_contour_rects", minRects);
-    frameResult.setMetadata<std::vector<cv::Point2f>>("filtered_contour_centers", centers);
-    
+    frameResult.setMetadata<int>("original_contour_count",  originalCount);
+    frameResult.setMetadata<int>("area_filter_count",        areaFilterCount);  // before max_contours; use for η
+    frameResult.setMetadata<int>("filtered_contour_count",   static_cast<int>(filteredContours.size()));
+    frameResult.setMetadata<double>("min_area_threshold",    minArea);
+    frameResult.setMetadata<double>("max_area_threshold",    maxArea);
+    frameResult.setMetadata<std::vector<std::vector<cv::Point>>>("filtered_contours",        filteredContours);
+    frameResult.setMetadata<std::vector<cv::RotatedRect>>        ("filtered_contour_rects",  minRects);
+    frameResult.setMetadata<std::vector<cv::Point2f>>            ("filtered_contour_centers",centers);
 
     return frameResult;
 }

@@ -1,0 +1,24 @@
+{
+  "run_name":          "test",
+  "description":       "container smoke-test — tiny run",
+
+  "pipeoptimizer_bin": "/app/bin/pipeoptimizer",
+  "param_ranges":      "/data/param_ranges.json",
+  "data_root":         "/data",
+
+  "generate": {
+    "n_records":      3,
+    "static_records": 1,
+    "body_type":      "both",
+    "warmup":         50,
+    "animal_frames":  100,
+    "seed":           42
+  },
+
+  "simulate": {
+    "n_pipes":   5,
+    "n_workers": 2
+  },
+
+  "cleanup_synth": false
+}

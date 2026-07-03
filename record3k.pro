@@ -24,7 +24,9 @@ SUBDIRS = \
     #src/test5 \
     #src/test6 \
     #src/test7 \
-    #src/pipelineviewer \
+    src/pipeoptimizer \
+    
+    src/pipelineviewer \
     #src/debugcameraload \
 
     
@@ -35,6 +37,7 @@ src/test4.depends = src/liblbt
 src/test5.depends = src/liblbt
 src/test6.depends = src/liblbt
 src/test7.depends = src/liblbt
+src/pipeoptimizer = src/liblbt
 src/pipelineviewer.depends = src/liblbt
 src/debugcameraload.depends = src/liblbt
 

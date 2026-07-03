@@ -67,6 +67,14 @@ FrameMemoryObject MassCenterOverlayCPUStep::process(const FrameMemoryObject& inp
         //construct a new FrameMemoryObject with metadata
         FrameMemoryObject frameResult(img);
         frameResult.setMetadata<cv::Point2f>("mass_center_point", center);
+        // Forward contour-count metadata from ContourAreaFilter so downstream
+        // consumers (sim_runner η metric) can read it from the final result.
+        if (input.hasMetadata("area_filter_count"))
+            frameResult.setMetadata<int>("area_filter_count",
+                input.getMetadata<int>("area_filter_count"));
+        if (input.hasMetadata("filtered_contour_count"))
+            frameResult.setMetadata<int>("filtered_contour_count",
+                input.getMetadata<int>("filtered_contour_count"));
         return frameResult;
     } catch (const std::exception& e) {
         std::stringstream ss;

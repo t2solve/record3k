@@ -91,6 +91,13 @@ RUN apt-get install -y --fix-missing \
     zlib1g-dev \ 
     libpcre2-dev \
     libdrogon-dev 
+
+# Debug tools (gdb for crash diagnosis, gdbserver for remote debugging)
+RUN apt-get install -y --no-install-recommends --fix-missing  gdb gdbserver libsqlite3-dev
+
+# Python3 + ping for camera debug scripting (debug_camera_network.py)
+RUN apt-get install -y --no-install-recommends --fix-missing  python3 iputils-ping 
+
     
 # clean up
 RUN  rm -rf /var/lib/apt/lists/*

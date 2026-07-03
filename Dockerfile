@@ -32,10 +32,10 @@ RUN if [ ! -d /app/src/liblbt/include/liblbt ]; then \
 RUN ls -al /app/src/liblbt/include/liblbt
 
 # Debug tools (gdb for crash diagnosis, gdbserver for remote debugging)
-RUN apt-get update && apt-get install -y --no-install-recommends gdb gdbserver libsqlite3-dev
+#RUN apt-get update && apt-get install -y --no-install-recommends gdb gdbserver libsqlite3-dev
 
 # Python3 + ping for camera debug scripting (debug_camera_network.py)
-RUN apt-get update && apt-get install -y --no-install-recommends python3 iputils-ping 
+#RUN apt-get update && apt-get install -y --no-install-recommends python3 iputils-ping 
 
 # Ensure qmake's PKGCONFIG += opencv4 can find opencv4.pc regardless of base image age
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH

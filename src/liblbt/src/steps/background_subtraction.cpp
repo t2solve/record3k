@@ -43,15 +43,16 @@ void BackgroundSubtractionCPUStep::initializeSubtractor(const FilterConfig& conf
     
     if (method == "MOG2") {
         int history = static_cast<int>(config.getParameter("history", 500));
-        double varThreshold = config.getParameter("var_threshold", 16.0);
-        bool detectShadows = config.getParameter("detect_shadows", 1.0) > 0.5;
-        
+        // accept both camelCase (JSON standard) and snake_case (legacy)
+        double varThreshold  = config.getParameter("varThreshold",  config.getParameter("var_threshold",  16.0));
+        bool detectShadows   = config.getParameter("detectShadows", config.getParameter("detect_shadows",  1.0)) > 0.5;
+
         m_backgroundSubtractor = cv::createBackgroundSubtractorMOG2(history, varThreshold, detectShadows);
     } else if (method == "KNN") {
         int history = static_cast<int>(config.getParameter("history", 500));
-        double dist2Threshold = config.getParameter("dist2_threshold", 400.0);
-        bool detectShadows = config.getParameter("detect_shadows", 1.0) > 0.5;
-        
+        double dist2Threshold = config.getParameter("dist2Threshold", config.getParameter("dist2_threshold", 400.0));
+        bool detectShadows    = config.getParameter("detectShadows",  config.getParameter("detect_shadows",   1.0)) > 0.5;
+
         m_backgroundSubtractor = cv::createBackgroundSubtractorKNN(history, dist2Threshold, detectShadows);
     } else {
         // Default to MOG2
@@ -92,10 +93,10 @@ FrameMemoryObject BackgroundSubtractionCUDAStep::process(const FrameMemoryObject
 }
 
 void BackgroundSubtractionCUDAStep::initializeSubtractor(const FilterConfig& config) {
-    int history = static_cast<int>(config.getParameter("history", 500));
-    double varThreshold = config.getParameter("var_threshold", 16.0);
-    bool detectShadows = config.getParameter("detect_shadows", 1.0) > 0.5;
-    
+    int history        = static_cast<int>(config.getParameter("history", 500));
+    double varThreshold = config.getParameter("varThreshold", config.getParameter("var_threshold",  16.0));
+    bool detectShadows  = config.getParameter("detectShadows", config.getParameter("detect_shadows",  1.0)) > 0.5;
+
     m_backgroundSubtractor = cv::cuda::createBackgroundSubtractorMOG2(history, varThreshold, detectShadows);
 }
 #endif
