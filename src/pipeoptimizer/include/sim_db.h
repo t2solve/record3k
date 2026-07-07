@@ -103,6 +103,12 @@ public:
     std::vector<AggregateLeaderboardRow> getAggregateLeaderboard(int limit = 30,
                                                                   int64_t sim_run_id = -1);
 
+    // Returns the config_json of the most recently inserted pipeline_configs row
+    // for this pipeline_id, or "" if none exists. Used by
+    // `leaderboard --aggregate --export-leader` to pull out the actual pipeline
+    // JSON behind the #1 ranked row.
+    std::string getPipelineConfigJson(const std::string& pipeline_id);
+
 private:
     sqlite3* m_db = nullptr;
     void createSchema();

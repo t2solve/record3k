@@ -14,6 +14,7 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QTemporaryFile>
 
 // ── Subcommand: generate (Step B) ─────────────────────────────────────────────
 
@@ -214,7 +215,37 @@ static int cmdRun(QCommandLineParser& cli) {
 
 // ── Subcommand: leaderboard (C5 global view) ──────────────────────────────────
 
-static int cmdLeaderboardAggregate(SimDB& db, int limit, int64_t run_id) {
+// Writes the leader's (rows[0]) pipeline config_json to a randomly-named file
+// under export_dir (default: system tmp dir) and prints the path. Returns
+// false (with a warning) if the leader's config_json can't be found in the DB.
+static bool exportLeaderConfig(SimDB& db, const AggregateLeaderboardRow& leader,
+                                const QString& export_dir) {
+    const std::string config_json = db.getPipelineConfigJson(leader.pipeline_id);
+    if (config_json.empty()) {
+        qWarning() << "leaderboard --export-leader: no pipeline_configs row found for"
+                   << QString::fromStdString(leader.pipeline_id);
+        return false;
+    }
+
+    const QString dir = export_dir.isEmpty() ? QDir::tempPath() : export_dir;
+    QDir().mkpath(dir);
+    QTemporaryFile tmp(dir + "/pipeoptimizer-leader-XXXXXX.json");
+    tmp.setAutoRemove(false);
+    if (!tmp.open()) {
+        qWarning() << "leaderboard --export-leader: cannot create temp file in" << dir;
+        return false;
+    }
+    tmp.write(config_json.data(), static_cast<qint64>(config_json.size()));
+    tmp.close();
+
+    std::cout << "Leader pipeline (" << leader.pipeline_id << ", avg SCORE="
+              << std::fixed << std::setprecision(1) << leader.avg_score
+              << ") config written to: " << tmp.fileName().toStdString() << "\n";
+    return true;
+}
+
+static int cmdLeaderboardAggregate(SimDB& db, int limit, int64_t run_id,
+                                    bool export_leader, const QString& export_dir) {
     const auto rows = db.getAggregateLeaderboard(limit, run_id);
     if (rows.empty()) {
         std::cout << "(no results)\n";
@@ -257,6 +288,9 @@ static int cmdLeaderboardAggregate(SimDB& db, int limit, int64_t run_id) {
                   << "\n";
     }
     std::cout << "\n";
+
+    if (export_leader && !exportLeaderConfig(db, rows.front(), export_dir))
+        return 1;
     return 0;
 }
 
@@ -320,18 +354,28 @@ static int cmdLeaderboard(QCommandLineParser& cli) {
         "Group by pipeline_id and average every metric across all records it was "
         "tested against (best-on-average configuration), instead of raw per-"
         "(pipeline,record) rows."));
+    cli.addOption(QCommandLineOption("export-leader",
+        "Also write the #1 ranked pipeline's full config JSON to a random-named "
+        "file (see --export-dir). Aggregate mode only."));
+    cli.addOption({"export-dir", "Directory for --export-leader output (default: system tmp dir).", "dir"});
     cli.process(QCoreApplication::instance()->arguments());
 
     if (!cli.isSet("db")) {
         qCritical() << "leaderboard: --db is required";
         return 1;
     }
+    if (cli.isSet("export-leader") && !cli.isSet("aggregate")) {
+        qCritical() << "leaderboard: --export-leader requires --aggregate";
+        return 1;
+    }
     const int limit  = cli.isSet("limit")  ? cli.value("limit").toInt() : 30;
     const int64_t run_id = cli.isSet("run-id") ? cli.value("run-id").toLongLong() : -1;
 
     SimDB db(cli.value("db").toStdString());
-    return cli.isSet("aggregate") ? cmdLeaderboardAggregate(db, limit, run_id)
-                                   : cmdLeaderboardRaw(db, limit, run_id);
+    return cli.isSet("aggregate")
+        ? cmdLeaderboardAggregate(db, limit, run_id, cli.isSet("export-leader"),
+                                   cli.value("export-dir"))
+        : cmdLeaderboardRaw(db, limit, run_id);
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────

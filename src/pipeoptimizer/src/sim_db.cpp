@@ -389,3 +389,20 @@ std::vector<AggregateLeaderboardRow> SimDB::getAggregateLeaderboard(int limit, i
     sqlite3_finalize(s);
     return rows;
 }
+
+std::string SimDB::getPipelineConfigJson(const std::string& pipeline_id) {
+    const char* sql =
+        "SELECT config_json FROM pipeline_configs"
+        " WHERE pipeline_id=? ORDER BY id DESC LIMIT 1;";
+    sqlite3_stmt* s = nullptr;
+    checkRc(sqlite3_prepare_v2(m_db, sql, -1, &s, nullptr), "prepare getPipelineConfigJson", m_db);
+    sqlite3_bind_text(s, 1, pipeline_id.c_str(), -1, SQLITE_TRANSIENT);
+
+    std::string result;
+    if (sqlite3_step(s) == SQLITE_ROW) {
+        const unsigned char* txt = sqlite3_column_text(s, 0);
+        if (txt) result = (const char*)txt;
+    }
+    sqlite3_finalize(s);
+    return result;
+}

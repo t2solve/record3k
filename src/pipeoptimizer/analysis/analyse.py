@@ -14,7 +14,16 @@ Produces:
     03_cluster_overview.png — Scatter: SCORE vs alpha, coloured by dominant param
     04_specialised.png      — Best-in-class table per record group
     05_record_groups.png    — Record characterisation (resting %, speed, etc.)
-    summary.txt             — Text leaderboard per group
+    06_blind_spots.png      — SCORE per pipeline × (body_type, speed_class) — which
+                              specific generation combinations each pipeline fails on
+    summary.txt             — Text leaderboard per group + per-pipeline blind spots
+
+--synth-root is optional. Record traits (body_type, speed class, resting) are
+derived from generation_configs.config_json in the DB by default — this
+survives cleanup_synth, unlike ground_truth.json. When --synth-root does still
+point at the generated frames, resting_frac/mean_speed_px are additionally
+computed empirically from the realized trajectory instead of the analytic
+Markov-chain estimate.
 """
 
 import argparse
@@ -51,7 +60,7 @@ def load_db(db_path: str, run_id: int | None):
             r.delta_fpr, r.eta, r.zeta, r.score,
             r.n_animal_frames, r.n_detected_frames,
             r.processing_time_ms,
-            g.arena_radius_px
+            g.arena_radius_px, g.config_json AS gen_config_json
         FROM sim_results r
         JOIN generation_configs g ON g.id = r.gen_config_id
         WHERE r.sim_run_id = ?
@@ -78,17 +87,80 @@ def extract_params(config_json: str) -> dict:
             "bg_history":  int(steps.get("BackgroundSubtraction_CUDA",{}).get("history",   500)),
             "varThreshold":  int(steps.get("BackgroundSubtraction_CUDA",{}).get("varThreshold",  16)),
             "detectShadows": int(steps.get("BackgroundSubtraction_CUDA",{}).get("detectShadows",  0)),
+            "gauss_kernel_size": int(steps.get("GaussianBlur_CUDA",  {}).get("kernel_size", 3)),
+            "gauss_sigma_x":     float(steps.get("GaussianBlur_CUDA",{}).get("sigma_x",     1.0)),
         }
     except Exception:
         return {"ksize": np.nan, "threshold": np.nan, "min_area": np.nan,
                 "max_contours": np.nan, "bg_history": np.nan,
-                "varThreshold": np.nan, "detectShadows": np.nan}
+                "varThreshold": np.nan, "detectShadows": np.nan,
+                "gauss_kernel_size": np.nan, "gauss_sigma_x": np.nan}
 
 
-def load_record_stats(synth_root: str) -> pd.DataFrame:
+def parse_record_traits(config_json: str) -> dict:
     """
-    Walk synth_root and compute per-record characteristics from ground_truth.json.
-    Returns DataFrame indexed by record_id.
+    Pull per-record generation traits out of the record's own synth config JSON
+    (generation_configs.config_json — always in the DB, survives cleanup_synth,
+    unlike ground_truth.json which only exists while the raw frames do).
+
+    speed_class is a nearest-mean classification of this record's realized
+    speed_px against the record's OWN speed_slow_px/normal_px/fast_px (so it
+    stays correct even if those class means are changed between runs). Records
+    generated without --speed-variation get speed_class="fixed" (every record
+    in that batch shares the same speed, so there's no class to distinguish).
+
+    resting_frac_est is the 2-state Markov chain's analytic steady-state
+    resting probability (rest_prob / (rest_prob + resume_prob)) — used only as
+    a fallback when ground_truth.json isn't available to compute the empirical
+    resting fraction of the actually-realized trajectory.
+    """
+    empty = {"body_type": "?", "speed_px": np.nan, "all_resting": False,
+             "speed_class": "unknown", "resting_frac_est": np.nan}
+    if not config_json:
+        return empty
+    try:
+        cfg  = json.loads(config_json)
+        anim = cfg.get("animal", {})
+        traj = cfg.get("trajectory", {})
+
+        body_type   = anim.get("body_type", "?")
+        speed_px    = traj.get("speed_px", np.nan)
+        all_resting = bool(traj.get("all_resting", False))
+        rest_prob   = traj.get("rest_prob")
+        resume_prob = traj.get("resume_prob")
+
+        if all_resting:
+            speed_class = "static"
+        elif traj.get("speed_variation", False):
+            classes = {
+                "slow":   traj.get("speed_slow_px",   np.nan),
+                "normal": traj.get("speed_normal_px", np.nan),
+                "fast":   traj.get("speed_fast_px",   np.nan),
+            }
+            speed_class = ("unknown" if pd.isna(speed_px) else
+                           min(classes, key=lambda k: abs(classes[k] - speed_px)))
+        else:
+            speed_class = "fixed"
+
+        if all_resting:
+            resting_frac_est = 1.0
+        elif rest_prob is not None and resume_prob is not None and (rest_prob + resume_prob) > 0:
+            resting_frac_est = rest_prob / (rest_prob + resume_prob)
+        else:
+            resting_frac_est = np.nan
+
+        return {"body_type": body_type, "speed_px": speed_px, "all_resting": all_resting,
+                "speed_class": speed_class, "resting_frac_est": resting_frac_est}
+    except Exception:
+        return empty
+
+
+def _load_record_stats_from_ground_truth(synth_root: str) -> pd.DataFrame:
+    """
+    Walk synth_root and compute per-record characteristics EMPIRICALLY from
+    ground_truth.json (the actually-realized trajectory, not just the
+    generative config). Only usable while the raw frames haven't been deleted
+    by cleanup_synth. Returns DataFrame indexed by record_id.
     """
     records = []
     for entry in sorted(Path(synth_root).iterdir()):
@@ -133,6 +205,44 @@ def load_record_stats(synth_root: str) -> pd.DataFrame:
     return pd.DataFrame(records).set_index("record_id")
 
 
+def load_record_stats(df_raw: pd.DataFrame, synth_root: str | None) -> pd.DataFrame:
+    """
+    Per-record characteristics, indexed by record_id. Primary source is
+    generation_configs.config_json (via parse_record_traits — always
+    available). If synth_root still holds the raw ground_truth.json files,
+    resting_frac/mean_speed_px/speed_std_px are additionally overlaid with the
+    more precise empirical values from the actually-realized trajectory;
+    speed_class always comes from config_json since ground_truth.json doesn't
+    record the slow/normal/fast class means at all.
+    """
+    base = (df_raw[["record_id", "gen_config_json"]]
+            .drop_duplicates("record_id")
+            .set_index("record_id"))
+    cfg_traits = base["gen_config_json"].apply(parse_record_traits).apply(pd.Series)
+
+    have_synth = bool(synth_root) and Path(synth_root).is_dir() and any(Path(synth_root).iterdir())
+    if have_synth:
+        rec_stats = _load_record_stats_from_ground_truth(synth_root)
+        rec_stats = rec_stats.reindex(cfg_traits.index)
+        rec_stats["speed_class"] = cfg_traits["speed_class"]
+        print("    record trait source: ground_truth.json (empirical) + config_json (speed_class)")
+    else:
+        rec_stats = pd.DataFrame(index=cfg_traits.index)
+        rec_stats["body_type"]       = cfg_traits["body_type"]
+        rec_stats["all_resting"]     = cfg_traits["all_resting"]
+        rec_stats["mean_speed_px"]   = cfg_traits["speed_px"]
+        rec_stats["resting_frac"]    = cfg_traits["resting_frac_est"]
+        rec_stats["speed_class"]     = cfg_traits["speed_class"]
+        rec_stats["n_animal_frames"] = np.nan
+        rec_stats["p95_speed_px"]    = np.nan
+        rec_stats["speed_std_px"]    = np.nan
+        print("    record trait source: generation_configs.config_json only "
+              "(synth_root unavailable — resting_frac is an analytic Markov-chain "
+              "estimate, not empirical)")
+
+    return rec_stats
+
+
 def classify_record(row) -> str:
     """Assign a group label to a record based on its trajectory characteristics."""
     if row["all_resting"]:
@@ -173,15 +283,19 @@ PARAM_JSON_TO_COL = {
     "pipeline.bg_history":           "bg_history",
     "pipeline.bg_var_threshold":     "varThreshold",
     "pipeline.bg_detect_shadows":    "detectShadows",
+    "pipeline.gaussian_kernel_size": "gauss_kernel_size",
+    "pipeline.gaussian_sigma_x":     "gauss_sigma_x",
 }
 ALL_PARAM_LABELS = {
-    "ksize":         "morph ksize",
-    "threshold":     "binary threshold",
-    "min_area":      "contour min_area",
-    "max_contours":  "max_contours",
-    "bg_history":    "BG history",
-    "varThreshold":  "BG varThreshold",
-    "detectShadows": "BG detectShadows",
+    "ksize":            "morph ksize",
+    "threshold":        "binary threshold",
+    "min_area":         "contour min_area",
+    "max_contours":     "max_contours",
+    "bg_history":       "BG history",
+    "varThreshold":     "BG varThreshold",
+    "detectShadows":    "BG detectShadows",
+    "gauss_kernel_size":"Gaussian kernel_size",
+    "gauss_sigma_x":    "Gaussian sigma_x",
 }
 METRIC_LABELS = {
     "score":        "SCORE (px)",
@@ -557,12 +671,71 @@ def plot_record_groups(rec_stats, out_dir):
     print("  saved 05_record_groups.png")
 
 
+def plot_blind_spots(df_merged: pd.DataFrame, out_dir: str, top_n_pipelines: int = 12) -> list:
+    """
+    Cross-tabulates mean SCORE per pipeline × (body_type, speed_class) combo.
+    A single overall SCORE, or even the per-resting-group breakdown in
+    04_specialised.png, can hide a pipeline that's excellent on average but
+    systematically blind to one specific combination (e.g. round+fast, or a
+    body type it was never really tested well against) — this heatmap is
+    meant to surface exactly that.
+    """
+    combo = df_merged.copy()
+    combo["combo"] = combo["body_type"].astype(str) + " / " + combo["speed_class"].astype(str)
+
+    overall   = combo.groupby("pipeline_id")["score"].mean().sort_values()
+    top_pipes = overall.head(top_n_pipelines).index
+
+    sub    = combo[combo["pipeline_id"].isin(top_pipes)]
+    pivot  = sub.pivot_table(index="pipeline_id", columns="combo", values="score", aggfunc="mean")
+    counts = sub.pivot_table(index="pipeline_id", columns="combo", values="score", aggfunc="count")
+    pivot  = pivot.loc[[p for p in top_pipes if p in pivot.index]]
+
+    if pivot.empty:
+        print("  skipping 06_blind_spots.png — no (body_type, speed_class) combinations found")
+        return []
+
+    fig, ax = plt.subplots(figsize=(max(8, 1.1 * pivot.shape[1] + 3),
+                                     max(4, 0.4 * pivot.shape[0] + 2)))
+    sns.heatmap(pivot, annot=True, fmt=".1f", cmap="RdYlGn_r", ax=ax,
+                cbar_kws={"label": "mean SCORE (px, lower = better)"},
+                linewidths=0.5, linecolor="white")
+    ax.set_title("Blind spots — mean SCORE per pipeline × (body_type / speed_class)\n"
+                 f"(top {len(pivot)} pipelines by overall SCORE; darker red = "
+                 "systematic failure on that combination)")
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, "06_blind_spots.png"), dpi=130)
+    plt.close(fig)
+    print("  saved 06_blind_spots.png")
+
+    # text summary: the true worst combo per pipeline. Deliberately NOT filtered
+    # by record count — combos like "static" are inherently low-n by design
+    # (generate's --static-records defaults to n_records/5) and are exactly the
+    # kind of rare-but-important blind spot this is meant to surface, not hide.
+    # The n= annotation lets the reader judge single-record noise for themselves.
+    lines = ["\n=== Blind spots (worst body_type/speed_class combo per pipeline) ==="]
+    for pid in pivot.index:
+        row = pivot.loc[pid].dropna()
+        if row.empty:
+            continue
+        worst = row.idxmax()
+        n = int(counts.loc[pid, worst])
+        caveat = "  (single record — treat as anecdotal)" if n < 2 else ""
+        lines.append(f"  {pid}: worst on [{worst}]  SCORE={row[worst]:.1f}  (n={n}){caveat}")
+    return lines
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main():
     ap = argparse.ArgumentParser(description="Pipeline optimiser — analysis")
     ap.add_argument("--db",           required=True,  help="sim_results.sqlite path")
-    ap.add_argument("--synth-root",   required=True,  help="dir containing synth-* dirs")
+    ap.add_argument("--synth-root",   default=None,
+                    help="dir containing synth-* dirs (optional — if missing/deleted, e.g. "
+                         "after cleanup_synth, record traits are derived from "
+                         "generation_configs.config_json in the DB instead)")
     ap.add_argument("--run-id",       type=int,       help="sim_run_id (default: latest)")
     ap.add_argument("--out-dir",      default=".",    help="output directory for plots")
     ap.add_argument("--param-ranges", default=None,
@@ -600,39 +773,50 @@ def main():
     PARAM_LABELS = {p: ALL_PARAM_LABELS.get(p, p) for p in PARAMS}
 
     # ── 3. Load record stats ──────────────────────────────────────────────────
-    print("[3] Loading record ground-truth stats …")
-    rec_stats = load_record_stats(args.synth_root)
+    print("[3] Loading record stats …")
+    rec_stats = load_record_stats(df_raw, args.synth_root)
     rec_stats["group"] = rec_stats.apply(classify_record, axis=1)
     print(f"    {len(rec_stats)} records found")
     print("    Group distribution:")
     for g, n in rec_stats["group"].value_counts().items():
         print(f"      {g}: {n}")
+    print("    Speed-class distribution:")
+    for g, n in rec_stats["speed_class"].value_counts().items():
+        print(f"      {g}: {n}")
     plot_record_groups(rec_stats, args.out_dir)
 
     # ── 4. Merge record info into main df ────────────────────────────────────
     df_merged = df.merge(
-        rec_stats[["resting_frac", "mean_speed_px", "body_type", "group"]].reset_index(),
+        rec_stats[["resting_frac", "mean_speed_px", "body_type", "group", "speed_class"]].reset_index(),
         on="record_id", how="left"
     )
 
     # ── 5. Per-pipeline aggregate (mean over all records) ────────────────────
     print("[4] Aggregating per pipeline …")
+    agg_spec = dict(
+        score        = ("score",         "mean"),
+        alpha_mean   = ("alpha_mean",    "mean"),
+        gamma_moving = ("gamma_moving",  "mean"),
+        gamma_resting= ("gamma_resting", "mean"),
+        delta_fpr    = ("delta_fpr",     "mean"),
+        eta          = ("eta",           "mean"),
+        zeta         = ("zeta",          "mean"),
+        ksize        = ("ksize",         "first"),
+        threshold    = ("threshold",     "first"),
+        min_area     = ("min_area",      "first"),
+        max_contours = ("max_contours",  "first"),
+    )
+    # Every swept param must survive into df_agg (one value per pipeline_id,
+    # so "first" is safe) — plot_cluster_overview colours by PARAMS[0]/[1],
+    # whatever those happen to be for this sweep, not just the fixed set above.
+    for p in PARAMS:
+        if p not in agg_spec:
+            agg_spec[p] = (p, "first")
     df_agg = (df_merged.groupby("pipeline_id")
-                       .agg(
-                           score        = ("score",         "mean"),
-                           alpha_mean   = ("alpha_mean",    "mean"),
-                           gamma_moving = ("gamma_moving",  "mean"),
-                           gamma_resting= ("gamma_resting", "mean"),
-                           delta_fpr    = ("delta_fpr",     "mean"),
-                           eta          = ("eta",           "mean"),
-                           zeta         = ("zeta",          "mean"),
-                           ksize        = ("ksize",         "first"),
-                           threshold    = ("threshold",     "first"),
-                           min_area     = ("min_area",      "first"),
-                           max_contours = ("max_contours",  "first"),
-                       )
+                       .agg(**agg_spec)
                        .sort_values("score"))
-    print(df_agg[["score","alpha_mean","gamma_moving","delta_fpr","ksize","min_area"]].head(10).to_string())
+    preview_cols = ["score", "alpha_mean", "gamma_moving", "delta_fpr"] + PARAMS
+    print(df_agg[preview_cols].head(10).to_string())
 
     # ── 6. Sensitivity analysis ───────────────────────────────────────────────
     print("[5] Sensitivity analysis (Spearman ρ + ANOVA η²) …")
@@ -653,6 +837,10 @@ def main():
     print("[8] Specialised leaderboards …")
     summary = plot_specialised(df_merged, rec_stats, args.out_dir)
 
+    # ── 9b. Blind spots — body_type × speed_class ─────────────────────────────
+    print("[8b] Blind-spot analysis …")
+    blind_spot_summary = plot_blind_spots(df_merged, args.out_dir)
+
     # ── 10. Text summary ──────────────────────────────────────────────────────
     summary_path = os.path.join(args.out_dir, "summary.txt")
     with open(summary_path, "w") as f:
@@ -662,14 +850,19 @@ def main():
         f.write(f"Pipelines: {df_merged['pipeline_id'].nunique()}\n\n")
         f.write("── Record groups ──\n")
         f.write(rec_stats["group"].value_counts().to_string() + "\n")
+        f.write("\n── Speed classes ──\n")
+        f.write(rec_stats["speed_class"].value_counts().to_string() + "\n")
         f.write("\n── Spearman ρ (param → metric) ──\n")
         f.write(rho_mat.to_string() + "\n")
         for line in summary:
+            f.write(line + "\n")
+        for line in blind_spot_summary:
             f.write(line + "\n")
 
     print(f"  saved summary.txt")
     print(f"\nDone. All outputs in {args.out_dir}/")
     print("".join(summary))
+    print("\n".join(blind_spot_summary))
 
 
 if __name__ == "__main__":
