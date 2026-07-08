@@ -75,6 +75,9 @@ FrameMemoryObject MassCenterOverlayCPUStep::process(const FrameMemoryObject& inp
         if (input.hasMetadata("filtered_contour_count"))
             frameResult.setMetadata<int>("filtered_contour_count",
                 input.getMetadata<int>("filtered_contour_count"));
+        if (input.hasMetadata("filtered_contours"))
+            frameResult.setMetadata<std::vector<std::vector<cv::Point>>>("filtered_contours",
+                input.getMetadata<std::vector<std::vector<cv::Point>>>("filtered_contours"));
         return frameResult;
     } catch (const std::exception& e) {
         std::stringstream ss;

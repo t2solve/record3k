@@ -14,9 +14,15 @@ SOURCES += \
     main.cpp \
     MainWindow.cpp \
     ApiClient.cpp \
-    ConfigDialog.cpp
+    ConfigDialog.cpp \
+    LandingDialog.cpp \
+    TaggingWindow.cpp
 
 HEADERS += \
     MainWindow.h \
     ApiClient.h \
-    ConfigDialog.h
+    ConfigDialog.h \
+    ImageUtils.h \
+    LandingDialog.h \
+    TaggingWindow.h \
+    ClickableImageLabel.h

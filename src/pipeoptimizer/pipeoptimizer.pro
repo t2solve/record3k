@@ -22,7 +22,10 @@ SOURCES += \
     src/metrics.cpp \
     src/sim_db.cpp \
     src/pipe_config_gen.cpp \
-    src/sim_runner.cpp
+    src/sim_runner.cpp \
+    src/real_metrics.cpp \
+    src/real_sim_db.cpp \
+    src/real_sim_runner.cpp
 
 HEADERS += \
     include/synth_config.h \
@@ -30,4 +33,7 @@ HEADERS += \
     include/metrics.h \
     include/sim_db.h \
     include/pipe_config_gen.h \
-    include/sim_runner.h
+    include/sim_runner.h \
+    include/real_metrics.h \
+    include/real_sim_db.h \
+    include/real_sim_runner.h

@@ -82,7 +82,6 @@ private:
     QString workDir_;
 
     // Helpers
-    static QImage matToQImage(const cv::Mat& mat);
     void refreshStepList();
     void buildParamsEditor(int index);
     void showBeforeAfter(int index);

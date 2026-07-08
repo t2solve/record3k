@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "ConfigDialog.h"
+#include "ImageUtils.h"
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QDateTime>
@@ -45,7 +46,7 @@ MainWindow::MainWindow(QWidget* parent)
             if (idx >= 0) showBeforeAfter(idx);
             else {
                 auto mat = currentFrame_->getCpuMat();
-                QImage img = matToQImage(mat);
+                QImage img = ImageUtils::matToQImage(mat);
                 QSize beforeSize = beforeLabel_->size();
                 QSize afterSize = afterLabel_->size();
                 if (beforeSize.width() <= 0 || beforeSize.height() <= 0) beforeSize = QSize(800,600);
@@ -444,7 +445,7 @@ void MainWindow::nextFrame() {
     
     // Always show original input in the input label
     auto inputMat = currentFrame_->getCpuMat();
-    QImage inputImg = matToQImage(inputMat);
+    QImage inputImg = ImageUtils::matToQImage(inputMat);
     QSize inputSize = inputLabel_->size();
     if (inputSize.width() <= 0 || inputSize.height() <= 0) inputSize = QSize(400, 400);
     inputLabel_->setPixmap(QPixmap::fromImage(inputImg).scaled(inputSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
@@ -486,7 +487,7 @@ void MainWindow::onFrameSliderChanged(int value) {
         } else {
             // Show original in both panes
             auto mat = currentFrame_->getCpuMat();
-            QImage img = matToQImage(mat);
+            QImage img = ImageUtils::matToQImage(mat);
             QSize beforeSize = beforeLabel_->size();
             QSize afterSize = afterLabel_->size();
             if (beforeSize.width() <= 0 || beforeSize.height() <= 0) beforeSize = QSize(800,600);
@@ -578,8 +579,8 @@ void MainWindow::showBeforeAfter(int index) {
     }
 
     // Convert and scale to fit labels while keeping aspect ratio
-    QImage beforeImg = matToQImage(before.getCpuMat());
-    QImage afterImg = matToQImage(after.getCpuMat());
+    QImage beforeImg = ImageUtils::matToQImage(before.getCpuMat());
+    QImage afterImg = ImageUtils::matToQImage(after.getCpuMat());
 
     QSize beforeSize = beforeLabel_->size();
     QSize afterSize = afterLabel_->size();
@@ -588,16 +589,6 @@ void MainWindow::showBeforeAfter(int index) {
 
     beforeLabel_->setPixmap(QPixmap::fromImage(beforeImg).scaled(beforeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     afterLabel_->setPixmap(QPixmap::fromImage(afterImg).scaled(afterSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-}
-
-QImage MainWindow::matToQImage(const cv::Mat& mat) {
-    cv::Mat rgb;
-    if (mat.channels() == 1) {
-        return QImage(mat.data, mat.cols, mat.rows, mat.step, QImage::Format_Grayscale8).copy();
-    } else {
-        cv::cvtColor(mat, rgb, cv::COLOR_BGR2RGB);
-        return QImage(rgb.data, rgb.cols, rgb.rows, rgb.step, QImage::Format_RGB888).copy();
-    }
 }
 
 void MainWindow::loadConfiguration() {

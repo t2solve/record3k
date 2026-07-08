@@ -2,6 +2,7 @@
 #include "synthetic_generator.h"
 #include "sim_runner.h"
 #include "sim_db.h"
+#include "real_sim_runner.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -213,6 +214,97 @@ static int cmdRun(QCommandLineParser& cli) {
     return runner.run();
 }
 
+// ── Subcommand: run-real (Step 2, src/pipeoptimizer/plan.md) ──────────────────
+// Sweeps pipeline configs against ONE real record's frames (decoded once, replayed
+// once per config -- see RealSimRunner), scored with a no-ground-truth proxy metric
+// instead of the synthetic sweep's GT-based one. Writes one row per config to a
+// per-record sqlite file.
+
+static int cmdRunReal(QCommandLineParser& cli) {
+    cli.addOption({"record-archive", "Record .tar.gz to extract, score, then clean up. "
+                                     "Mutually exclusive with --record-dir.",           "file"});
+    cli.addOption({"record-dir",    "Already-unpacked record directory, used as-is (never deleted). "
+                                     "Mutually exclusive with --record-archive.",       "dir"});
+    cli.addOption({"base-pipeline", "Base pipeline JSON file (default: built-in). Sweep mode only.", "file"});
+    cli.addOption({"param-ranges",  "param_ranges.json path. Sweep mode: LHS-generates --n-pipes configs.", "file"});
+    cli.addOption({"pipeline-config", "Single fixed pipeline JSON to run as-is, no sweep. "
+                                     "Mutually exclusive with --param-ranges.",       "file"});
+    cli.addOption({"n-pipes",       "Number of pipeline configs to generate (LHS).",   "N"});
+    cli.addOption({"seed",          "Random seed for LHS pipeline generation.",        "N"});
+    cli.addOption({"description",   "Label for this run.",                             "text"});
+    cli.addOption({"db",            "Output sqlite path (default: run_test_param_<record_uid>.sqlite3 "
+                                     "next to the record dir).",                        "file"});
+    cli.addOption({"tags-db",       "Tag data store to consult for ROI/valid-range/complete-failure "
+                                     "(default: data/simulation/supervised_records_data.sqlite3).", "file"});
+    cli.addOption({"n-workers",     "Parallel worker threads (default 4).",            "N"});
+    cli.addOption({"movement-epsilon-px", "Min displacement between detections to count as real movement "
+                                          "(default 5.0). Provisional -- see plan.",   "px"});
+    cli.addOption({"min-movement-events", "Hard-fail if fewer real movement events occur (default 3). "
+                                          "Provisional -- see plan.",                  "N"});
+    cli.addOption({"area-tolerance-pct", "+/- %% from mean detected area before a frame is flagged "
+                                         "(default 30). Provisional -- see plan.",     "pct"});
+    cli.addOption({"jump-threshold-px", "Displacement between detections above this counts as a jump "
+                                        "(default 32.0). Provisional -- see plan.",    "px"});
+    cli.addOption({"max-speed-px-per-frame", "Speed cap between detections (default: unbounded, no basis "
+                                             "yet for a real value).",                 "px"});
+    cli.addOption({"roi-violation-tolerance", "Consecutive out-of-ROI frames tolerated before counting a "
+                                              "violation (default 5).",                "N"});
+    cli.process(QCoreApplication::instance()->arguments());
+
+    RealSimRunner::Options opts;
+    opts.record_archive_path = cli.value("record-archive").toStdString();
+    opts.record_dir_path = cli.value("record-dir").toStdString();
+    opts.base_pipeline_path = cli.value("base-pipeline").toStdString();
+    opts.param_ranges_path = cli.value("param-ranges").toStdString();
+    opts.pipeline_config_path = cli.value("pipeline-config").toStdString();
+    opts.n_pipeline_configs = cli.isSet("n-pipes") ? cli.value("n-pipes").toInt() : 20;
+    opts.seed = cli.isSet("seed") ? (uint64_t)cli.value("seed").toULongLong() : 42;
+    opts.description = cli.value("description").toStdString();
+    opts.db_path = cli.value("db").toStdString();
+    opts.tags_db_path = cli.value("tags-db").toStdString();
+    opts.n_workers = cli.isSet("n-workers") ? cli.value("n-workers").toInt() : 4;
+
+    if (cli.isSet("movement-epsilon-px"))
+        opts.metrics_config.movement_epsilon_px = cli.value("movement-epsilon-px").toDouble();
+    if (cli.isSet("min-movement-events"))
+        opts.metrics_config.min_movement_events = cli.value("min-movement-events").toInt();
+    if (cli.isSet("area-tolerance-pct"))
+        opts.metrics_config.area_tolerance_pct = cli.value("area-tolerance-pct").toDouble();
+    if (cli.isSet("jump-threshold-px"))
+        opts.metrics_config.jump_threshold_px = cli.value("jump-threshold-px").toDouble();
+    if (cli.isSet("max-speed-px-per-frame"))
+        opts.metrics_config.max_speed_px_per_frame = cli.value("max-speed-px-per-frame").toDouble();
+    if (cli.isSet("roi-violation-tolerance"))
+        opts.metrics_config.roi_violation_tolerance = cli.value("roi-violation-tolerance").toInt();
+
+    if (opts.record_archive_path.empty() && opts.record_dir_path.empty()) {
+        qCritical() << "run-real: either --record-archive or --record-dir is required";
+        return 1;
+    }
+    if (!opts.record_archive_path.empty() && !opts.record_dir_path.empty()) {
+        qCritical() << "run-real: --record-archive and --record-dir are mutually exclusive";
+        return 1;
+    }
+    if (opts.param_ranges_path.empty() && opts.pipeline_config_path.empty()) {
+        qCritical() << "run-real: either --param-ranges (sweep) or --pipeline-config (single fixed pipeline) is required";
+        return 1;
+    }
+    if (!opts.param_ranges_path.empty() && !opts.pipeline_config_path.empty()) {
+        qCritical() << "run-real: --param-ranges and --pipeline-config are mutually exclusive";
+        return 1;
+    }
+
+    qInfo().noquote() << "=== pipeoptimizer run-real ===";
+    if (!opts.record_archive_path.empty())
+        qInfo().noquote() << "  record-archive:" << QString::fromStdString(opts.record_archive_path);
+    else
+        qInfo().noquote() << "  record-dir    :" << QString::fromStdString(opts.record_dir_path);
+    qInfo().noquote() << "  n-workers     :" << opts.n_workers;
+
+    RealSimRunner runner(std::move(opts));
+    return runner.run();
+}
+
 // ── Subcommand: leaderboard (C5 global view) ──────────────────────────────────
 
 // Writes the leader's (rows[0]) pipeline config_json to a randomly-named file
@@ -393,15 +485,18 @@ int main(int argc, char* argv[])
         "Commands:\n"
         "  generate    Generate synthetic tracking records (Step B)\n"
         "  run         Run pipeline optimisation sweep or single pipeline (Step C)\n"
+        "  run-real    Sweep pipeline configs against ONE real record, no ground truth "
+                       "(plan.md step 2)\n"
         "  leaderboard Show global leaderboard across all runs stored in a DB\n"
         "\n"
         "Usage:\n"
         "  pipeoptimizer generate    [options]\n"
         "  pipeoptimizer run         [options]\n"
+        "  pipeoptimizer run-real    [options]\n"
         "  pipeoptimizer leaderboard [options]");
     cli.addHelpOption();
     cli.addVersionOption();
-    cli.addPositionalArgument("command", "generate | run | leaderboard");
+    cli.addPositionalArgument("command", "generate | run | run-real | leaderboard");
 
     // Parse only the first argument to determine command
     cli.parse(app.arguments());
@@ -411,6 +506,8 @@ int main(int argc, char* argv[])
         return cmdGenerate(cli);
     if (pos.first() == "run")
         return cmdRun(cli);
+    if (pos.first() == "run-real")
+        return cmdRunReal(cli);
     if (pos.first() == "leaderboard")
         return cmdLeaderboard(cli);
 

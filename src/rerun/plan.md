@@ -1,5 +1,7 @@
 
-# goal rerun processing with new pipeline on debug data
+# goal:  fine tune pipeline config on real world record data
+
+goal rerun processing with new pipeline on debug data
 
 ## structure of record
 file name:
