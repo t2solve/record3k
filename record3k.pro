@@ -18,18 +18,19 @@ export(LOG_LEVEL)
 
 SUBDIRS = \
     src/liblbt \
-    #src/test2 \
-    #src/test3 \
-    #src/test4 \
-    #src/test5 \
-    #src/test6 \
-    #src/test7 \
     src/pipeoptimizer \
-    
     src/pipelineviewer \
-    #src/debugcameraload \
+    src/rerun
 
-    
+# Disabled targets (uncomment to include):
+# src/test2
+# src/test3
+# src/test4
+# src/test5
+# src/test6
+# src/test7
+# src/debugcameraload
+
 #define deps
 src/test2.depends = src/liblbt
 src/test3.depends = src/liblbt
@@ -40,6 +41,7 @@ src/test7.depends = src/liblbt
 src/pipeoptimizer = src/liblbt
 src/pipelineviewer.depends = src/liblbt
 src/debugcameraload.depends = src/liblbt
+src/rerun.depends = src/liblbt
 
 
 # Build API app only when CONFIG+=api is set
