@@ -43,6 +43,19 @@ struct RealMetricsConfig {
     double max_speed_px_per_frame = -1.0; // -1 = unbounded; no basis yet for a real value
     int roi_violation_tolerance = 5;      // consecutive out-of-ROI frames tolerated before counting a violation
                                            // (mirrors TaggingWindow's own tracker-loss tolerance)
+
+    // Hard-fail gates promoted from bgsub_sweep1's leaderboard, not just guessed cold:
+    // that campaign's "winner" (perfect pass_rate via min_movement_events alone) turned
+    // out to be exactly the degenerate optimum this file's own header comment warns
+    // about -- it passed while spending ~11% of its detected frames outside the tagged
+    // ROI and having an area_tolerance_violation_rate of 0.43 vs 0.09-0.24 everywhere
+    // else. Scoring these low was not enough; a bad-enough run must be excluded from
+    // the passed pool the same way min_movement_events already excludes a static-
+    // artifact lock. -1 = disabled (unbounded), matching max_speed_px_per_frame's
+    // convention -- still provisional, calibrated only from bgsub_sweep1's 18 records,
+    // same caveat as every other threshold in this struct.
+    double max_area_violation_rate = -1.0; // hard-fail if area_tolerance_violation_rate exceeds this
+    double max_roi_violation_rate = -1.0;  // hard-fail if (n_roi_violations / n_frames_detected) exceeds this
 };
 
 struct RealMetrics {

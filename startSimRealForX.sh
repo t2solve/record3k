@@ -34,7 +34,7 @@ IMAGE_NAME="record3k-sim-real"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 RECORD_TAR_GZ="$1"
-RUN_CONFIG="${2:-$SCRIPT_DIR/data/simulation/bgsub_sweep1.json}"
+RUN_CONFIG="${2:-$SCRIPT_DIR/data/simulation/bgsub_sweep2.json}"
 TAGS_DB="${3:-$SCRIPT_DIR/data/simulation/supervised_records_data.sqlite3}"
 # Any arguments beyond the first three are forwarded as-is to sim_runner_real.py
 # inside the container (e.g. --force, --n-pipes 40).

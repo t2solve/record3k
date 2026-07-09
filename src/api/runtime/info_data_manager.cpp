@@ -223,6 +223,66 @@ std::optional<Json::Value> InfoDataManager::getRecordInfo(const std::string& rec
     return get("records", recordUID);
 }
 
+bool InfoDataManager::deleteRecord(const std::string& recordUID) {
+    std::lock_guard lk(mtx_);
+
+    auto recordsIt = cats_.find("records");
+    auto filesIt = cats_.find("files");
+    if (recordsIt == cats_.end() || filesIt == cats_.end()) {
+        LOG_ERROR << "Records or files category not found";
+        return false;
+    }
+
+    auto recordOpt = recordsIt->second.store->get(recordUID);
+    if (!recordOpt) {
+        LOG_WARN << "Record not found for deletion: " << recordUID;
+        return false;
+    }
+
+    // Resolve the fileUID associated with this record (fall back to convention)
+    std::string fileUID = recordOpt->isMember("fileUID") ? (*recordOpt)["fileUID"].asString() : "";
+    if (fileUID.empty() || fileUID == "file-rec-placeholder") {
+        fileUID = "file-rec-" + recordUID;
+    }
+
+    // Resolve the archive path: prefer the FileInfo entry, fall back to the conventional bin path
+    auto fileInfoOpt = filesIt->second.store->get(fileUID);
+    std::filesystem::path archivePath = (fileInfoOpt && fileInfoOpt->isMember("archivePath"))
+        ? std::filesystem::path((*fileInfoOpt)["archivePath"].asString())
+        : baseDir_ / "files" / "bin" / (fileUID + ".tar.gz");
+
+    // Delete the tar.gz archive from data/files/bin
+    if (std::filesystem::exists(archivePath)) {
+        std::error_code ec;
+        if (!std::filesystem::remove(archivePath, ec)) {
+            LOG_ERROR << "Failed to delete archive " << archivePath << ": " << ec.message();
+            return false;
+        }
+        LOG_INFO << "Deleted archive: " << archivePath;
+    } else {
+        LOG_WARN << "Archive not found on disk (continuing): " << archivePath;
+    }
+
+    // Remove the FileInfo json entry (data/files/{fileUID}.json)
+    if (fileInfoOpt) {
+        if (!filesIt->second.store->erase(fileUID)) {
+            LOG_ERROR << "Failed to delete file info entry: " << fileUID;
+            return false;
+        }
+        LOG_INFO << "Deleted file info entry: " << fileUID;
+    }
+
+    // Remove the record json entry (data/records/{recordUID}.json)
+    bool erased = recordsIt->second.store->erase(recordUID);
+    if (erased) {
+        LOG_INFO << "Deleted record info entry: " << recordUID;
+    } else {
+        LOG_ERROR << "Failed to delete record info entry: " << recordUID;
+    }
+
+    return erased;
+}
+
 // ============ Specialized File Operations ============
 
 bool InfoDataManager::createFileInfo(const std::string& fileUID,

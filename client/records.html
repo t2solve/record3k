@@ -44,6 +44,15 @@
                 <div id="session-loading" class="loading">Loading...</div>
                 <div id="session-error" class="error" style="display: none;"></div>
 
+                <div class="bulk-actions" id="bulk-actions">
+                    <label class="bulk-select-all">
+                        <input type="checkbox" id="select-all-checkbox" onchange="app.toggleSelectAll(this.checked)">
+                        Select all records
+                    </label>
+                    <span id="selected-count" class="selected-count">0 selected</span>
+                    <button id="bulk-delete-btn" class="btn-action btn-delete" onclick="app.deleteSelectedRecords()" disabled>🗑️ Delete Selected</button>
+                </div>
+
                 <div id="session-list" class="session-list"></div>
             </section>
 

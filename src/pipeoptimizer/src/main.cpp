@@ -249,6 +249,10 @@ static int cmdRunReal(QCommandLineParser& cli) {
                                              "yet for a real value).",                 "px"});
     cli.addOption({"roi-violation-tolerance", "Consecutive out-of-ROI frames tolerated before counting a "
                                               "violation (default 5).",                "N"});
+    cli.addOption({"max-area-violation-rate", "Hard-fail if area_tolerance_violation_rate exceeds this "
+                                              "(default: unbounded/disabled). Provisional -- see plan.", "rate"});
+    cli.addOption({"max-roi-violation-rate", "Hard-fail if (n_roi_violations / n_frames_detected) exceeds "
+                                             "this (default: unbounded/disabled). Provisional -- see plan.", "rate"});
     cli.process(QCoreApplication::instance()->arguments());
 
     RealSimRunner::Options opts;
@@ -276,6 +280,10 @@ static int cmdRunReal(QCommandLineParser& cli) {
         opts.metrics_config.max_speed_px_per_frame = cli.value("max-speed-px-per-frame").toDouble();
     if (cli.isSet("roi-violation-tolerance"))
         opts.metrics_config.roi_violation_tolerance = cli.value("roi-violation-tolerance").toInt();
+    if (cli.isSet("max-area-violation-rate"))
+        opts.metrics_config.max_area_violation_rate = cli.value("max-area-violation-rate").toDouble();
+    if (cli.isSet("max-roi-violation-rate"))
+        opts.metrics_config.max_roi_violation_rate = cli.value("max-roi-violation-rate").toDouble();
 
     if (opts.record_archive_path.empty() && opts.record_dir_path.empty()) {
         qCritical() << "run-real: either --record-archive or --record-dir is required";

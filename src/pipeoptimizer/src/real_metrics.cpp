@@ -103,13 +103,49 @@ RealMetrics computeRealMetrics(const std::vector<RealFrameObservation>& frames,
         m.area_tolerance_violation_rate = static_cast<double>(violations) / areas.size();
     }
 
+    // Hard-fail gates. Collected rather than short-circuited so a run tripping
+    // multiple gates at once reports all of them, not just whichever happened to be
+    // checked first -- useful when triaging why a config failed.
+    std::vector<std::string> failReasons;
+
     if (m.n_movement_events < config.min_movement_events) {
-        m.passed = false;
         std::ostringstream ss;
         ss << "only " << m.n_movement_events << " real movement event(s) found (need >= "
            << config.min_movement_events << ") -- likely tracking a static artifact, "
               "not the live animal, or the animal was never reliably detected";
-        m.fail_reason = ss.str();
+        failReasons.push_back(ss.str());
+    }
+
+    if (config.max_area_violation_rate >= 0.0 &&
+        m.area_tolerance_violation_rate > config.max_area_violation_rate) {
+        std::ostringstream ss;
+        ss << "area_tolerance_violation_rate " << m.area_tolerance_violation_rate
+           << " exceeds max " << config.max_area_violation_rate
+           << " -- detected contour area is too unstable to trust as one consistent "
+              "object, not just scored low";
+        failReasons.push_back(ss.str());
+    }
+
+    const double roiViolationRate = m.n_frames_detected > 0
+        ? static_cast<double>(m.n_roi_violations) / m.n_frames_detected
+        : 0.0;
+    if (config.max_roi_violation_rate >= 0.0 && roiViolationRate > config.max_roi_violation_rate) {
+        std::ostringstream ss;
+        ss << "roi_violation_rate " << roiViolationRate << " exceeds max "
+           << config.max_roi_violation_rate
+           << " -- detections spend too much time outside the tagged arena to trust "
+              "as the live animal, not just scored low";
+        failReasons.push_back(ss.str());
+    }
+
+    if (!failReasons.empty()) {
+        m.passed = false;
+        std::ostringstream joined;
+        for (size_t i = 0; i < failReasons.size(); ++i) {
+            if (i > 0) joined << "; ";
+            joined << failReasons[i];
+        }
+        m.fail_reason = joined.str();
     }
 
     return m;

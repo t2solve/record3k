@@ -108,6 +108,15 @@ Json::Value buildSpec() {
         paths[path]["post"]["requestBody"]["required"] = false;
         paths[path]["post"]["requestBody"]["content"]["application/json"]["schema"]["type"] = "object";
     };
+    auto addDelete = [&](const std::string &path, const std::string &summary){
+        paths[path]["delete"]["summary"] = summary;
+        // Add path parameters
+        Json::Value params = extractPathParams(path);
+        if (!params.empty()) {
+            paths[path]["delete"]["parameters"] = params;
+        }
+        paths[path]["delete"]["responses"]["200"]["description"] = "Deleted";
+    };
 
     // Info endpoints
     addGet("/info/cameras/list","List cameras","[CameraInfo]");
@@ -134,6 +143,7 @@ Json::Value buildSpec() {
     addPost("/do/camera/calibrate/{camUID}","Trigger calibration","CalibrationInfo",202);
     addPost("/do/camera/record/start/{camUID}","Start recording (supports pipeLineTest:bool for debug mode)","RecordInfo",201);
     addGet("/do/camera/record/stop/{recordUID}","Stop an active recording","RecordInfo");
+    addDelete("/do/camera/record/delete/{recordUID}","Delete a record (removes its tar.gz archive and JSON entries)");
     addPost("/do/camera/test/{camUID}","Test camera connectivity","",200);
 
     root["paths"] = paths;

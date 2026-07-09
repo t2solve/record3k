@@ -719,6 +719,51 @@ void DoController::cameraRecordStop(const HttpRequestPtr&, std::function<void (c
     cb(resp);
 }
 
+void DoController::recordDelete(const HttpRequestPtr&, std::function<void (const HttpResponsePtr &)> && cb, const std::string &recordUID) {
+    LOG_INFO << "[DoController::recordDelete] Deleting record: " << recordUID;
+
+    auto recordInfo = infoDataManager().get("records", recordUID);
+    if (!recordInfo) {
+        LOG_WARN << "[DoController::recordDelete] Record not found: " << recordUID;
+        Json::Value err;
+        err["error"] = "Record not found: " + recordUID;
+        auto resp = HttpResponse::newHttpJsonResponse(err);
+        resp->setStatusCode(k404NotFound);
+        cb(resp);
+        return;
+    }
+
+    // Refuse to delete a recording that is still actively running
+    auto stateOpt = lbt::FileManager::instance().getRecordingState(recordUID);
+    if (stateOpt && *stateOpt == "RECORDING") {
+        LOG_WARN << "[DoController::recordDelete] Refusing to delete active recording: " << recordUID;
+        Json::Value err;
+        err["error"] = "Recording is still active, stop it before deleting: " + recordUID;
+        auto resp = HttpResponse::newHttpJsonResponse(err);
+        resp->setStatusCode(k409Conflict);
+        cb(resp);
+        return;
+    }
+
+    if (!infoDataManager().deleteRecord(recordUID)) {
+        LOG_ERROR << "[DoController::recordDelete] Failed to delete record: " << recordUID;
+        Json::Value err;
+        err["error"] = "Failed to delete record: " + recordUID;
+        auto resp = HttpResponse::newHttpJsonResponse(err);
+        resp->setStatusCode(k500InternalServerError);
+        cb(resp);
+        return;
+    }
+
+    LOG_INFO << "[DoController::recordDelete] Record deleted successfully: " << recordUID;
+    Json::Value response;
+    response["recordUID"] = recordUID;
+    response["status"] = "deleted";
+    auto resp = HttpResponse::newHttpJsonResponse(response);
+    resp->setStatusCode(k200OK);
+    cb(resp);
+}
+
 // Test a specific camera by UID
 void DoController::cameraTest(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> && cb, const std::string &camUID) {
     LOG_INFO << "[DoController::cameraTest] Starting camera test for: " << camUID;

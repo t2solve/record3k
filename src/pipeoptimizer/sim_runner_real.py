@@ -41,6 +41,10 @@ Config JSON (paths are relative to the config file unless absolute):
         "n_pipes":   20,
         "n_workers": 4,
         "seed":      42
+    },
+    "metrics_config": {
+        "max_area_violation_rate": 0.28,
+        "max_roi_violation_rate":  0.05
     }
 }
 
@@ -49,6 +53,17 @@ pipeoptimizer's hardcoded built-in default pipeline. Required whenever param_ran
 varies a step that isn't part of that built-in default (e.g. GaussianBlur_CUDA), or
 relies on a non-default fixed value for an unswept param — otherwise that param is
 silently a no-op or wrong (same caveat as sim_runner.py's base_pipeline).
+
+"metrics_config" is optional -- any key matching a RealMetricsConfig field (see
+real_metrics.h / main.cpp's run-real flags: movement_epsilon_px, min_movement_events,
+area_tolerance_pct, jump_threshold_px, max_speed_px_per_frame, roi_violation_tolerance,
+max_area_violation_rate, max_roi_violation_rate) is forwarded as the matching
+--flag-name. Omit a key to leave that threshold at pipeoptimizer's own default.
+max_area_violation_rate/max_roi_violation_rate default to disabled (-1, unbounded) in
+pipeoptimizer itself -- without setting them here, a config that clears
+min_movement_events trivially but tracks noise outside the ROI/area-stable band will
+still show passed=1 (see bgsub_sweep1's pipe-lhs-0001-42, src/pipeoptimizer/plan.md
+step 3's leaderboard writeup).
 
 Derived paths (auto-computed, not needed in config):
     out_dir/<record_uid>.sqlite3 — one result DB per record (see RealSimDB)
@@ -75,6 +90,20 @@ C_BCYAN    = "\033[1;36m"
 C_BMAGENTA = "\033[1;35m"
 
 SEP = "=" * 72
+
+# maps optional "metrics_config" JSON keys to pipeoptimizer run-real CLI flags
+# (see real_metrics.h's RealMetricsConfig / main.cpp's cmdRunReal) -- any key not
+# present in the config JSON is simply left at pipeoptimizer's own default.
+METRICS_CONFIG_FLAGS = {
+    "movement_epsilon_px":     "--movement-epsilon-px",
+    "min_movement_events":     "--min-movement-events",
+    "area_tolerance_pct":      "--area-tolerance-pct",
+    "jump_threshold_px":       "--jump-threshold-px",
+    "max_speed_px_per_frame":  "--max-speed-px-per-frame",
+    "roi_violation_tolerance": "--roi-violation-tolerance",
+    "max_area_violation_rate": "--max-area-violation-rate",
+    "max_roi_violation_rate":  "--max-roi-violation-rate",
+}
 
 
 # ── real-time subprocess streaming (identical to sim_runner.py's run_cmd) ────
@@ -199,6 +228,7 @@ def main() -> None:
         cfg = json.load(f)
 
     rr = cfg.setdefault("run_real", {})
+    metrics_cfg = cfg.get("metrics_config", {})
     if args.n_pipes    is not None: rr["n_pipes"]   = args.n_pipes
     if args.n_workers  is not None: rr["n_workers"] = args.n_workers
     if args.seed       is not None: rr["seed"]      = args.seed
@@ -280,6 +310,9 @@ def main() -> None:
             # or relies on a non-default fixed value for an unswept param (e.g.
             # binary_threshold) -- otherwise that param is silently a no-op or wrong.
             cmd += ["--base-pipeline", str(paths["base_pipeline"])]
+        for key, flag in METRICS_CONFIG_FLAGS.items():
+            if key in metrics_cfg:
+                cmd += [flag, str(metrics_cfg[key])]
         t0 = time.time()
         rc = run_cmd(cmd, f"RUN-REAL/{uid}")
         elapsed = time.time() - t0

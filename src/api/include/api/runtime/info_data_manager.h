@@ -35,7 +35,17 @@ public:
      * Get record info by UID
      */
     std::optional<Json::Value> getRecordInfo(const std::string& recordUID);
-    
+
+    /**
+     * Delete a record: removes the packed tar.gz archive from data/files/bin,
+     * the associated FileInfo entry from data/files, and the record's own
+     * JSON entry from data/records.
+     * @return true if everything present was removed successfully; false if the
+     *         record does not exist or an archive/entry that exists on disk
+     *         could not be deleted.
+     */
+    bool deleteRecord(const std::string& recordUID);
+
     // ============ Specialized File Operations ============
     
     /**

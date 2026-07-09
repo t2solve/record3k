@@ -22,6 +22,7 @@ class BugTrackerApp {
         this.calibrations = [];
         this.activeRecordingCamUIDs = new Map(); // camUID → recordUID
         this.recordingPollInterval = null;
+        this.selectedRecordUIDs = new Set(); // recordUIDs checked for bulk delete
         this.currentPage = this.detectPage();
         this.init();
     }
@@ -673,6 +674,8 @@ class BugTrackerApp {
             ? this._renderRecordRow(e.data)
             : this._renderCalibrationRow(e.data)
         ).join('');
+
+        this.updateBulkActionsBar();
     }
 
     _renderRecordRow(record) {
@@ -687,9 +690,12 @@ class BugTrackerApp {
         const framesRecorded = record.framesRecorded != null ? record.framesRecorded : null;
         const actualFPS = record.actualFPS != null ? Number(record.actualFPS).toFixed(2) : null;
         const isActive = record.status === 'recording' || record.status === 'started';
+        const isChecked = this.selectedRecordUIDs.has(record.recordUID);
 
         return `<div class="session-card ${statusClass}" onclick="app.toggleExpand(this)">
             <div class="session-summary">
+                <input type="checkbox" class="session-checkbox" data-record-uid="${uid}" ${isChecked ? 'checked' : ''}
+                    onclick="event.stopPropagation()" onchange="app.toggleRecordSelection('${uid}', this.checked)">
                 <span class="session-icon">📹</span>
                 <span class="session-uid">${uid}</span>
                 <span class="session-time">${startTime}</span>
@@ -706,6 +712,7 @@ class BugTrackerApp {
                 <div class="session-actions">
                     ${isActive ? `<button class="btn-action btn-stop" onclick="event.stopPropagation();app.stopRecording('${uid}')">⏹️ Stop</button>` : ''}
                     <button class="btn-action" onclick="event.stopPropagation();app.viewRecordDetails('${uid}')">📊 Details</button>
+                    <button class="btn-action btn-delete" ${isActive ? 'disabled title="Stop recording before deleting"' : ''} onclick="event.stopPropagation();app.deleteRecord('${uid}')">🗑️ Delete</button>
                 </div>
             </div>
         </div>`;
@@ -977,6 +984,112 @@ class BugTrackerApp {
             alert(`✗ Failed to stop recording: ${error.message}`);
             console.error('Failed to stop recording:', error);
         }
+    }
+
+    toggleRecordSelection(recordUID, checked) {
+        if (checked) {
+            this.selectedRecordUIDs.add(recordUID);
+        } else {
+            this.selectedRecordUIDs.delete(recordUID);
+        }
+        this.updateBulkActionsBar();
+    }
+
+    toggleSelectAll(checked) {
+        document.querySelectorAll('.session-checkbox').forEach(cb => {
+            cb.checked = checked;
+            const recordUID = cb.dataset.recordUid;
+            if (checked) {
+                this.selectedRecordUIDs.add(recordUID);
+            } else {
+                this.selectedRecordUIDs.delete(recordUID);
+            }
+        });
+        this.updateBulkActionsBar();
+    }
+
+    updateBulkActionsBar() {
+        const countEl = document.getElementById('selected-count');
+        const deleteBtn = document.getElementById('bulk-delete-btn');
+        const selectAllCb = document.getElementById('select-all-checkbox');
+        const count = this.selectedRecordUIDs.size;
+
+        if (countEl) countEl.textContent = `${count} selected`;
+        if (deleteBtn) deleteBtn.disabled = count === 0;
+
+        if (selectAllCb) {
+            const checkboxes = document.querySelectorAll('.session-checkbox');
+            const total = checkboxes.length;
+            const selectedVisible = Array.from(checkboxes).filter(cb => cb.checked).length;
+            selectAllCb.checked = total > 0 && selectedVisible === total;
+            selectAllCb.indeterminate = selectedVisible > 0 && selectedVisible < total;
+        }
+    }
+
+    async deleteRecord(recordUID) {
+        if (!confirm(`Delete record ${recordUID}?\n\nThis permanently removes its recording archive (.tar.gz) and metadata from disk. This cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/do/camera/record/delete/${encodeURIComponent(recordUID)}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            });
+
+            if (response.ok) {
+                this.selectedRecordUIDs.delete(recordUID);
+                this.showNotification(`🗑️ Record ${recordUID} deleted`, 'success');
+                await this.loadSessionData();
+            } else {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status} - ${errorText}`);
+            }
+        } catch (error) {
+            alert(`✗ Failed to delete record: ${error.message}`);
+            console.error('Failed to delete record:', error);
+        }
+    }
+
+    async deleteSelectedRecords() {
+        const uids = Array.from(this.selectedRecordUIDs);
+        if (uids.length === 0) return;
+
+        const preview = uids.slice(0, 5).join('\n') + (uids.length > 5 ? `\n...and ${uids.length - 5} more` : '');
+        if (!confirm(`Delete ${uids.length} record(s)?\n\n${preview}\n\nThis permanently removes each recording's archive (.tar.gz) and metadata from disk. This cannot be undone.`)) {
+            return;
+        }
+
+        const deleteBtn = document.getElementById('bulk-delete-btn');
+        if (deleteBtn) deleteBtn.disabled = true;
+        this.showNotification(`Deleting ${uids.length} record(s)...`, 'info');
+
+        const results = await Promise.allSettled(uids.map(uid =>
+            fetch(`${API_BASE_URL}/do/camera/record/delete/${encodeURIComponent(uid)}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            }).then(async resp => {
+                if (!resp.ok) {
+                    const errorText = await resp.text();
+                    throw new Error(`${uid}: HTTP ${resp.status} - ${errorText}`);
+                }
+                return uid;
+            })
+        ));
+
+        const succeeded = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+        const failed = results.filter(r => r.status === 'rejected').map(r => r.reason?.message || String(r.reason));
+
+        succeeded.forEach(uid => this.selectedRecordUIDs.delete(uid));
+
+        if (failed.length === 0) {
+            this.showNotification(`✓ Deleted ${succeeded.length} record(s)`, 'success');
+        } else {
+            this.showNotification(`Deleted ${succeeded.length}, failed ${failed.length}`, 'error');
+            alert(`Some deletions failed:\n\n${failed.join('\n')}`);
+        }
+
+        await this.loadSessionData();
     }
 
     async stopRecord(recordUID) {
