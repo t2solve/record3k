@@ -37,6 +37,16 @@ public:
     std::optional<Json::Value> getRecordInfo(const std::string& recordUID);
 
     /**
+     * Resolve the actual "records" store key (filename stem) for a
+     * recordUID. Normally the key equals recordUID directly; if a record's
+     * filename and its own internal "recordUID" field have drifted apart
+     * (e.g. a manual copy/restore/migration), falls back to scanning for a
+     * record whose field matches. Returns nullopt if no record matches
+     * either way.
+     */
+    std::optional<std::string> resolveRecordKey(const std::string& recordUID);
+
+    /**
      * Delete a record: removes the packed tar.gz archive from data/files/bin,
      * the associated FileInfo entry from data/files, and the record's own
      * JSON entry from data/records.

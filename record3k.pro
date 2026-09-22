@@ -18,9 +18,9 @@ export(LOG_LEVEL)
 
 SUBDIRS = \
     src/liblbt \
-    src/pipeoptimizer \
-    src/pipelineviewer \
-    src/rerun
+    #src/pipeoptimizer \
+    #src/pipelineviewer \
+    #src/rerun
 
 # Disabled targets (uncomment to include):
 # src/test2

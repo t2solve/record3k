@@ -1,0 +1,31 @@
+# Runtime data — bind-mounted via compose.yaml volumes, not needed at build time
+data/
+logs/
+build/
+
+# VCS / editor / tooling
+.git/
+.gitignore
+.vscode/
+.claude/
+.venv/
+
+# Local build artifacts (image builds fresh via qmake/make)
+# NOTE: obj/ is intentionally NOT excluded — it holds obj/common.pri, a
+# hand-written qmake include (PKGCONFIG += opencv4, CUDA/VimbaX/API config),
+# not build output. Excluding it makes qmake silently skip that include,
+# dropping the OpenCV pkg-config flags and breaking the build.
+build/
+bin/
+*.o
+*.so
+*.a
+Makefile
+Makefile.*
+CMakeFiles/
+CMakeCache.txt
+
+# Misc scratch / docs not needed inside the image
+doc/
+debugging/
+foo/

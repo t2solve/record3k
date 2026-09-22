@@ -722,7 +722,7 @@ void DoController::cameraRecordStop(const HttpRequestPtr&, std::function<void (c
 void DoController::recordDelete(const HttpRequestPtr&, std::function<void (const HttpResponsePtr &)> && cb, const std::string &recordUID) {
     LOG_INFO << "[DoController::recordDelete] Deleting record: " << recordUID;
 
-    auto recordInfo = infoDataManager().get("records", recordUID);
+    auto recordInfo = infoDataManager().getRecordInfo(recordUID);
     if (!recordInfo) {
         LOG_WARN << "[DoController::recordDelete] Record not found: " << recordUID;
         Json::Value err;

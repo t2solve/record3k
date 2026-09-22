@@ -220,10 +220,43 @@ bool InfoDataManager::updateRecordInfo(const std::string& recordUID, const Json:
 }
 
 std::optional<Json::Value> InfoDataManager::getRecordInfo(const std::string& recordUID) {
-    return get("records", recordUID);
+    auto key = resolveRecordKey(recordUID);
+    if (!key) return std::nullopt;
+    return get("records", *key);
+}
+
+std::optional<std::string> InfoDataManager::resolveRecordKey(const std::string& recordUID) {
+    std::lock_guard lk(mtx_);
+    auto it = cats_.find("records");
+    if (it == cats_.end()) return std::nullopt;
+
+    if (it->second.store->get(recordUID)) return recordUID;
+
+    // Fallback: the filename (store key) and the internal "recordUID" field
+    // have drifted apart (e.g. a manual copy/restore/migration renamed the
+    // file without updating its contents, or vice versa). Scan for a record
+    // whose *field* matches what was asked for.
+    for (const auto& key : it->second.store->keys()) {
+        auto v = it->second.store->get(key);
+        if (v && v->isMember("recordUID") && (*v)["recordUID"].asString() == recordUID) {
+            LOG_WARN << "[DataIntegrity] records/" << key << ".json: recordUID field \""
+                     << recordUID << "\" does not match filename key \"" << key
+                     << "\" - resolved via fallback scan; rename the file to "
+                     << recordUID << ".json to fix this permanently";
+            return key;
+        }
+    }
+    return std::nullopt;
 }
 
 bool InfoDataManager::deleteRecord(const std::string& recordUID) {
+    auto resolvedKey = resolveRecordKey(recordUID);
+    if (!resolvedKey) {
+        LOG_WARN << "Record not found for deletion: " << recordUID;
+        return false;
+    }
+    const std::string& key = *resolvedKey;
+
     std::lock_guard lk(mtx_);
 
     auto recordsIt = cats_.find("records");
@@ -233,7 +266,7 @@ bool InfoDataManager::deleteRecord(const std::string& recordUID) {
         return false;
     }
 
-    auto recordOpt = recordsIt->second.store->get(recordUID);
+    auto recordOpt = recordsIt->second.store->get(key);
     if (!recordOpt) {
         LOG_WARN << "Record not found for deletion: " << recordUID;
         return false;
@@ -272,12 +305,13 @@ bool InfoDataManager::deleteRecord(const std::string& recordUID) {
         LOG_INFO << "Deleted file info entry: " << fileUID;
     }
 
-    // Remove the record json entry (data/records/{recordUID}.json)
-    bool erased = recordsIt->second.store->erase(recordUID);
+    // Remove the record json entry (data/records/{key}.json - may differ
+    // from recordUID if the filename and field had drifted apart)
+    bool erased = recordsIt->second.store->erase(key);
     if (erased) {
-        LOG_INFO << "Deleted record info entry: " << recordUID;
+        LOG_INFO << "Deleted record info entry: " << key;
     } else {
-        LOG_ERROR << "Failed to delete record info entry: " << recordUID;
+        LOG_ERROR << "Failed to delete record info entry: " << key;
     }
 
     return erased;

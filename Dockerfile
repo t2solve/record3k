@@ -11,6 +11,12 @@ FROM cuda-builder:latest
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
+# iproute2 provides `ip`, used by entrypoint.sh to add the GigE camera subnet
+# IP alias (CAMERA_NIC) — without it the check always fails and the alias
+# step is silently skipped, regardless of whether the NIC actually exists.
+RUN apt-get update && apt-get install -y --no-install-recommends iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set the working directory
 WORKDIR /app
 

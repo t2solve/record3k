@@ -113,7 +113,7 @@ void InfoController::getRecord(const HttpRequestPtr&, std::function<void (const 
     RecordInfo r{recordUID,"cal-001",false,"pipe-abc","study-123","finished",12.3,"2025-11-07T12:00:00Z","2025-11-07T12:00:12Z","file-"+recordUID};
     cb(HttpResponse::newHttpJsonResponse(r.toJson()));
 #else
-    auto v = infoDataManager().get("records", recordUID);
+    auto v = infoDataManager().getRecordInfo(recordUID);
     cb(HttpResponse::newHttpJsonResponse(v.value_or(Json::Value(Json::objectValue))));
 #endif
 }
