@@ -38,7 +38,7 @@ RUN if [ ! -d /app/src/liblbt/include/liblbt ]; then \
 RUN ls -al /app/src/liblbt/include/liblbt
 
 # Debug tools (gdb for crash diagnosis, gdbserver for remote debugging)
-#RUN apt-get update && apt-get install -y --no-install-recommends gdb gdbserver libsqlite3-dev
+RUN apt-get update && apt-get install -y --no-install-recommends gdb gdbserver libsqlite3-dev
 
 # Python3 + ping for camera debug scripting (debug_camera_network.py)
 #RUN apt-get update && apt-get install -y --no-install-recommends python3 iputils-ping 

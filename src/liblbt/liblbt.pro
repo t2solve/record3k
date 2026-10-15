@@ -34,7 +34,12 @@ HEADERS += \
 
 # Link jsoncpp for JsonStore used inside the library
 CONFIG += link_pkgconfig
-PKGCONFIG += jsoncpp sqlite3
+PKGCONFIG += jsoncpp
+
+# sqlite3 (tag_data_store.cpp, steps/debug_logger.cpp): linked directly rather
+# than via PKGCONFIG since not every distro's libsqlite3-dev ships a .pc file
+# (matches pipeoptimizer.pro / rerun.pro, which already do this).
+LIBS += -lsqlite3
 
 # Or for static library
 # CONFIG += static
