@@ -1,4 +1,4 @@
-include(../../obj/common.pri)
+include(../../config/common.pri)
 
 TEMPLATE = app
 TARGET   = rerun

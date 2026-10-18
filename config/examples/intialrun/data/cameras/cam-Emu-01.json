@@ -1,0 +1,8 @@
+{
+  "camUID": "cam-8-emulator-test",
+  "ip":"127.0.0.1",
+  "macAddress": "6c:0b:5e:5a:2a:66",
+  "serialNumber": "EMULATOR-0001",
+  "status": "available",
+  "description": "DEBUG Emulator GT1920C",
+}

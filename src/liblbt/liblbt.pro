@@ -3,7 +3,7 @@ VERSION = 0.0.2
 TEMPLATE = lib
 
 # include common settings
-include(../../obj/common.pri)
+include(../../config/common.pri)
 
 # For shared library
 CONFIG += shared

@@ -1,0 +1,10 @@
+
+{
+  "camUID": "cam-GT1920C-01",
+  "ip":"192.168.178.99",
+  "macAddress": "00:0F:31:03:38:D4",
+  "description": "GT1920C",
+  "status": "available",
+  "cameraType": "TYPE_CAM_VIMBA",
+  "datetimeLastSeen": "2026-01-17T10:30:00Z"
+}

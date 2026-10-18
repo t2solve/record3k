@@ -1,0 +1,9 @@
+
+{
+  "camUID": "cam-GT1920C-01",
+  "macAddress": " 00:0A:47:37:27:77",
+  "description": "CAM 3 Allied Vision Alvium G1-240c (DEV_000A47372777)",
+  "status": "available",
+  "cameraType": "TYPE_CAM_VIMBA",
+  "datetimeLastSeen": "2026-01-17T10:30:00Z"
+}

@@ -86,3 +86,20 @@ __pycache__/
 
 # VSCode
 .vscode/
+
+# Local scratch / runtime output (never commit)
+foo/
+debugging/
+logs/
+.venv/
+.qmake.stash
+*.pcapng
+*.sqlite3
+*.sqlite
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Local tool settings (copy from *.example)
+tools/run.env
+__pycache__/

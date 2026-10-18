@@ -1,0 +1,9 @@
+
+{
+  "camUID": "cam-HD-C920-01",
+  "devicePath" :"/dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_7ADDB8AF-video-index0",
+  "description": "HD Pro Webcam C920 (usb-0000:00:14.0-6.3.3)",
+  "status": "available",
+  "cameraType": "TYPE_CAM_USB",
+  "datetimeLastSeen": "2026-01-20T10:30:00Z"
+}

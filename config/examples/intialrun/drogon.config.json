@@ -1,0 +1,23 @@
+{
+  "listeners": [
+    { "address": "0.0.0.0", "port": 8080 }
+  ],
+  "app": {
+    "thread_number": 0,
+    "enable_run_as_daemon": false,
+    "data_root_path": "data"
+  },
+  
+  "custom_config": {
+    "vimbax_transport_layer_file": "foo.file.cti",
+    "log_path": "./logs"
+  },
+  
+  "swagger": {
+    "enable": true,
+    "api_basepath": "/",
+    "title": "Testrecord3k API",
+    "description": "Auto-generated OpenAPI spec for testrecord3k endpoints",
+    "version": "1.0.0"
+  }
+}

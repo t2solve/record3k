@@ -1,0 +1,11 @@
+{
+  "camUID": "cam-4-unit-4",
+   "ip":"172.18.227.213",
+  "macAddress": "00:0A:47:1D:2A:66",
+  "serialNumber": "04YTM",
+  "description": "U4 Allied Vision Alvium G1-240c Cam 4",
+  "status": "available",
+  "cameraType": "TYPE_CAM_VIMBA",
+  "datetimeLastSeen": "2026-01-17T10:30:00Z"
+}
+

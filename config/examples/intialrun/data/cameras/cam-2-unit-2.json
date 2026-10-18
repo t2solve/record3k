@@ -1,0 +1,11 @@
+{
+  "camUID": "cam-2-unit-2",
+  "ip":"172.18.227.211",
+  "macAddress": "00:0A:47:1C:0C:9D",
+  "serialNumber": "04YTP",
+  "description": "U2 Allied Vision Alvium G1-240c Cam 2",
+  "status": "available",
+  "cameraType": "TYPE_CAM_VIMBA",
+  "datetimeLastSeen": "2026-01-17T10:30:00Z"
+}
+
