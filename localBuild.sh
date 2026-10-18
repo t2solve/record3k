@@ -3,9 +3,9 @@
 
 set -euo pipefail
 
-# need debian packages:
-# pkg-config libdrogon-dev qt6-base-dev qmake6 libjsoncpp-dev
-# TODO build opencv from source
+# need debian packages (see README.md, "Build option A"):
+# build-essential pkg-config qt6-base-dev qmake6 libdrogon-dev libjsoncpp-dev libsqlite3-dev
+# plus OpenCV 4 (built from source with CUDA for --cuda) and the VimbaX SDK in ./vimbax for --vimbax
 
 
 
@@ -16,7 +16,7 @@ set -euo pipefail
 # - On success, can optionally run a built app via --x <binary-name>
 #
 # Usage examples:
-#   ./localBuild.sh                 # build with defaults (CUDA+Vimba enabled by default per common.pri)
+#   ./localBuild.sh                 # CPU-only build of liblbt (CUDA, VimbaX, API are opt-in flags)
 #   ./localBuild.sh --cuda       # use CUDA
 #   ./localBuild.sh --vimbax     # use VimbaX
 #   ./localBuild.sh --api        # build the API server app
