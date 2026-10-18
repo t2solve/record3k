@@ -1,0 +1,87 @@
+{
+  "_comment": "Suggested sweep ranges for step C optimisation — calibrate after A2 noise analysis",
+
+  "noise.gaussian_std": {
+    "values": [3.0, 6.0, 10.0, 15.0],
+    "rationale": "Industrial 8-bit cameras: 3–6 DN quiet, 10–15 DN noisy. BinaryThreshold=80 means noise < half-threshold is safe; beyond ~15 DN the threshold starts eating real detections.",
+    "calibrate_from_A2": "measure std-dev of a static background region across frames"
+  },
+
+  "noise.reflection_brightness": {
+    "values": [0, 20, 45, 80],
+    "rationale": "0 = ideal, 80 = near threshold (80 DN). At 80 reflections start generating false contours. Realistic lab setups are usually 20–45 DN.",
+    "calibrate_from_A2": "find brightest static blob that does not move between frames"
+  },
+
+  "noise.n_reflections": {
+    "values": [0, 2, 4, 7],
+    "rationale": "Each reflection is a potential false positive. Up to 4 is typical for an overhead single-lamp setup; 7 tests robustness.",
+    "calibrate_from_A2": "count bright stable blobs in background frame"
+  },
+
+  "noise.temporal_flicker_std": {
+    "values": [0.5, 2.0, 5.0],
+    "rationale": "LED panels: ≤1 DN. Fluorescent/mains-coupled lighting: 3–6 DN at 10 fps due to 50/100 Hz beat. Affects BackgroundSubtraction stability.",
+    "calibrate_from_A2": "measure per-frame mean brightness over an empty arena region"
+  },
+
+  "animal.semi_major_px": {
+    "values": [25, 40, 55, 70],
+    "body_type": "long",
+    "rationale": "At ~1.72 px/mm (1280 px width): 25 px ≈ 14 mm (small insect), 70 px ≈ 40 mm (large fish). ContourAreaFilter max_area=300000 is not the binding constraint; min_area=7 means even 25 px semi-major is fine.",
+    "calibrate_from_A2": "measure contour bounding-box of real animals in debug images"
+  },
+
+  "animal.semi_minor_px": {
+    "comment": "derive from semi_major and desired aspect ratio",
+    "aspect_ratios": [3.0, 4.5, 6.0],
+    "example": "semi_major=42, aspect=4 → semi_minor=10"
+  },
+
+  "animal.round_radius_px": {
+    "values": [15, 22, 32, 45],
+    "body_type": "round",
+    "rationale": "15 px ≈ 9 mm (beetle), 45 px ≈ 26 mm (snail). Keep area < 300000 px² i.e. radius < 309 px."
+  },
+
+  "animal.gray_value": {
+    "values": [30, 55, 80, 110],
+    "rationale": "Floor ~182 DN. Contrast = floor_gray - gray_value must exceed BinaryThreshold=80 after BackgroundSubtraction produces a difference frame. At gray_value=110 the contrast is 72 DN — below threshold; start the sweep here to intentionally stress the pipeline. At gray_value=30 contrast is 152 DN — very easy detection.",
+    "calibrate_from_A2": "measure animal pixel intensity in raw frames"
+  },
+
+  "trajectory.speed_px": {
+    "values": [3.0, 7.0, 14.0, 22.0],
+    "rationale": "At 10 fps: 3 px/f ≈ 1.7 mm/s (slow crawl), 22 px/f ≈ 13 mm/s (fast fish). Fast movement causes MOG2 foreground mask smearing; tune BinaryThreshold or MorphologyClose kernel accordingly.",
+    "calibrate_from_A2": "measure frame-to-frame centroid displacement from mass_center debug images"
+  },
+
+  "trajectory.turn_std_deg": {
+    "values": [5.0, 12.0, 25.0, 40.0],
+    "rationale": "5 deg = directed swimmer (fish), 40 deg = thigmotactic random walk (insect hugging wall). Higher turn std produces more complex trajectories that expose tracking gaps."
+  },
+
+  "pipeline.binary_threshold": {
+    "values": [50, 80, 110, 140],
+    "rationale": "This is the primary sensitivity knob in pipe-default-42. Lower = more false positives, higher = missed detections. Sweep together with animal.gray_value.",
+    "note": "Change 'threshold' field in BinaryThreshold_CUDA step of pipeline JSON"
+  },
+
+  "pipeline.morph_ksize": {
+    "values": [7, 11, 15, 21],
+    "rationale": "MorphologyClose fills gaps in the foreground mask. Larger kernel = more gap-filling but also merges nearby objects. Default=15.",
+    "note": "Change 'ksize' field in MorphologyClose_CUDA step"
+  },
+
+  "pipeline.contour_max_contours": {
+    "values": [0, 1],
+    "rationale": "0 = legacy behaviour (all contours merged, centroid smear possible). 1 = largest-area contour wins — eliminates smear when a reflection and animal coexist in the frame. Should almost always be 1 in production; sweep [0,1] to quantify how much smear costs in terms of alpha and eta.",
+    "note": "Change 'max_contours' field in ContourAreaFilter_CUDA step. Source: area_filter_count metadata key tracks frames where >1 contour passed the area gate (eta metric)."
+  },
+
+  "pipeline.contour_min_area": {
+    "values": [7, 50, 200, 500],
+    "rationale": "Filters noise contours. Raising from 7 to 500 eliminates camera noise false positives at the cost of missing very small animals.",
+    "note": "Change 'min_area' in ContourAreaFilter_CUDA step"
+  }
+}

@@ -18,14 +18,17 @@ export(LOG_LEVEL)
 
 SUBDIRS = \
     src/liblbt \
-    #src/pipelineviewer
+    #src/pipeoptimizer \
+    #src/pipelineviewer \
+    #src/rerun
 
 # Legacy test programs (test2-test7, debugcameraload, appgentestvideo) live on
-# branch archive/test-targets. Simulation tooling (pipeoptimizer, rerun) lives
-# on branch feature/simulation.
+# branch archive/test-targets.
 
 #define deps
+src/pipeoptimizer = src/liblbt
 src/pipelineviewer.depends = src/liblbt
+src/rerun.depends = src/liblbt
 
 
 # Build API app only when CONFIG+=api is set
