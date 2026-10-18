@@ -1,0 +1,32 @@
+{
+  "_comment": "Sweep-5 — follow-up to sweep-4: re-centred bg_var_threshold/bg_history ranges around the sweep-4 optimum (both winners sat at their sweep-4 ceiling), dropped detectShadows/min_area/max_contours from the active sweep (no measurable effect), and re-tests gaussian_kernel_size/gaussian_sigma_x now that analyse.py actually extracts them (sweep-4 bug — see src/pipeoptimizer/analysis/analyse.py). base_pipeline is pipe-v3-base-sweep5.json (= pipe-v2-clean.json with detectShadows fixed 1->0). See param_ranges_sweep5.json for full rationale per param.",
+
+  "run_name":          "sweep5",
+  "description":       "sweep-5 — re-centred bg_var_threshold/bg_history + gaussian blur re-test",
+
+  "pipeoptimizer_bin": "/app/bin/pipeoptimizer",
+  "base_pipeline":     "pipelines/pipe-v3-base-sweep5.json",
+  "param_ranges":      "param_ranges_sweep5.json",
+  "data_root":         ".",
+
+  "generate": {
+    "n_records":      13,
+    "static_records":  1,
+    "body_type":      "both",
+    "warmup":         500,
+    "animal_frames":  800,
+    "seed":           42
+  },
+
+  "simulate": {
+    "n_pipes":   64,
+    "n_workers":  36
+  },
+
+  "leaderboard": {
+    "limit": 30,
+    "aggregate": true
+  },
+
+  "cleanup_synth": true
+}

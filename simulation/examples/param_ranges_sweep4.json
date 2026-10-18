@@ -1,0 +1,38 @@
+{
+  "_comment": "Sweep-4 — GaussianBlur_CUDA + BackgroundSubtraction_CUDA + ContourAreaFilter_CUDA, on top of pipelines/pipe-v2-clean.json (LensCorrection_CUDA/ProjectPointTo2DSurface_CPU disabled). MorphologyClose_CUDA/BinaryThreshold_CUDA held fixed at their pipe-v2-clean values (ksize=5, threshold=200 — sweep-2/3 winners).",
+
+  "_fixed_params": {
+    "note": "Fixed in the base pipeline (pipelines/pipe-v2-clean.json), not varied here.",
+    "pipeline.morph_ksize":     { "value": 5,   "rationale": "sweep-2 winner" },
+    "pipeline.binary_threshold":{ "value": 200, "rationale": "correct regardless of detectShadows (sweep-3)" }
+  },
+
+  "pipeline.gaussian_kernel_size": {
+    "values": [3, 5, 7, 9],
+    "rationale": "Pre-blur kernel size ahead of background subtraction. Larger kernels suppress camera noise/reflections at the cost of edge sharpness for contour detection. New in sweep-4 — was fixed at 3 in pipe-v2-clean's baseline run."
+  },
+  "pipeline.gaussian_sigma_x": {
+    "values": [0.8, 1.0, 1.5, 2.0],
+    "rationale": "Gaussian sigma paired with kernel_size (sigma_y mirrors the pipeline's own fixed value, not swept independently). New in sweep-4."
+  },
+  "pipeline.bg_history": {
+    "values": [100, 250, 500, 1000, 2000],
+    "rationale": "Carried over from sweep-3: shorter history = faster MOG2 adaptation (better for moving animals, worse for static/dead-animal absorption)."
+  },
+  "pipeline.bg_var_threshold": {
+    "values": [4, 8, 16, 32, 64],
+    "rationale": "Carried over from sweep-3."
+  },
+  "pipeline.bg_detect_shadows": {
+    "values": [0, 1],
+    "rationale": "Carried over from sweep-3."
+  },
+  "pipeline.contour_min_area": {
+    "values": [7, 15, 30, 60, 120],
+    "rationale": "Re-testing the min_area elbow now that a Gaussian pre-blur sits ahead of background subtraction — the optimum may shift versus sweep-1/2, which had no pre-blur."
+  },
+  "pipeline.contour_max_contours": {
+    "values": [1, 2],
+    "rationale": "max_contours=0 already confirmed bad (centroid smear, alpha=51px, sweep-1) and excluded here; re-confirming 1 vs 2 under the new pre-blur pipeline."
+  }
+}

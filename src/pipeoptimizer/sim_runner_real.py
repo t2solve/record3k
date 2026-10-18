@@ -35,7 +35,7 @@ Config JSON (paths are relative to the config file unless absolute):
     "tags_db":              "data/simulation/supervised_records_data.sqlite3",
     "param_ranges":         "data/simulation/param_ranges_sweep6.json",
     "base_pipeline":        "data/simulation/pipelines/pipe-v4-base-sweep6.json",
-    "records_archive_root": "/home/tb55xemi/work/idiv/record3kanalyse/data/downloaded_records",
+    "records_archive_root": "/path/to/downloaded_records",
     "out_dir":              "data/simulation/supervised_sweep1",
     "run_real": {
         "n_pipes":   20,

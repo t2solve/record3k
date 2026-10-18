@@ -18,15 +18,17 @@ export(LOG_LEVEL)
 
 SUBDIRS = \
     src/liblbt \
-    #src/pipeoptimizer \
-    #src/pipelineviewer \
-    #src/rerun
+    src/pipeoptimizer \
+    src/rerun \
+    #src/pipelineviewer
+
+# feature/simulation: pipeoptimizer + rerun are built by default on this branch.
 
 # Legacy test programs (test2-test7, debugcameraload, appgentestvideo) live on
 # branch archive/test-targets.
 
 #define deps
-src/pipeoptimizer = src/liblbt
+src/pipeoptimizer.depends = src/liblbt
 src/pipelineviewer.depends = src/liblbt
 src/rerun.depends = src/liblbt
 

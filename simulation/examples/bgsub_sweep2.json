@@ -1,0 +1,19 @@
+{
+    "run_name":             "bgsub_sweep2",
+    "description":          "follow-up to bgsub_sweep1: drop degenerate varThreshold=16, resolve transition + tail, narrow bg_history to a confirmatory check, sweep contour_min_area jointly with varThreshold (fixed 15 previously killed detection on real footage)",
+    "pipeoptimizer_bin":    "/app/bin/pipeoptimizer",
+    "tags_db":              "supervised_records_data.sqlite3",
+    "param_ranges":         "param_ranges_bgsub2.json",
+    "base_pipeline":        "pipelines/pipe-v4-base-sweep6.json",
+    "records_archive_root": "/data/records",
+    "out_dir":              "bgsub_sweep2",
+    "run_real": {
+        "n_pipes":   40,
+        "n_workers": 4,
+        "seed":      815
+    },
+    "metrics_config": {
+        "max_area_violation_rate": 0.28,
+        "max_roi_violation_rate":  0.05
+    }
+}

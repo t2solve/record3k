@@ -1,0 +1,29 @@
+{
+  "_comment": "Sweep-5 — follow-up to sweep-4. bg_var_threshold turned out to be a cliff (median score 134px at 4, 10px at 8, <1px at 16-64) not a gradient — re-centred and extended past the sweep-4 ceiling (64) to find the true optimum. bg_history's best value (2000) sat at the sweep-4 ceiling too — extended upward for the same reason. detectShadows/min_area/max_contours showed ~0 effect even within the good-varThreshold subset — fixed via the base pipeline (see base_pipeline in sweep5.json) instead of swept, to reclaim LHS budget. gaussian_kernel_size/gaussian_sigma_x were swept in sweep-4 but a bug in analyse.py (fixed alongside this sweep) meant their effect was never actually measured — re-swept unchanged so we finally get real signal on them.",
+
+  "_fixed_params": {
+    "note": "Fixed in the base pipeline (pipelines/pipe-v3-base-sweep5.json), not varied here. Only 'values' arrays in this file are actually applied by pipe_config_gen — a bare 'value' key is not read by the generator, so these three must be baked into the base pipeline JSON, not just documented here.",
+    "pipeline.morph_ksize":          { "value": 5,   "rationale": "sweep-2 winner" },
+    "pipeline.binary_threshold":     { "value": 200, "rationale": "correct regardless of detectShadows (sweep-3)" },
+    "pipeline.bg_detect_shadows":    { "value": 0,   "rationale": "sweep-4: no measurable effect on any metric (|rho| < 0.13); ds=0 also edged out ds=1 within the good-varThreshold subset" },
+    "pipeline.contour_min_area":     { "value": 15,  "rationale": "sweep-4: no measurable effect (|rho| < 0.17) even restricted to good-varThreshold pipelines; 15 is a safe middle pick, already pipe-v2-clean's value" },
+    "pipeline.contour_max_contours": { "value": 1,   "rationale": "sweep-4: no measurable effect (|rho| < 0.02); 1 matches the sweep-4 overall winner, already pipe-v2-clean's value" }
+  },
+
+  "pipeline.bg_var_threshold": {
+    "values": [8, 16, 24, 32, 48, 64, 96, 128],
+    "rationale": "Sweep-4 showed a cliff, not a gradient: median score 134px @ vt=4, 10px @ vt=8, <1px @ vt>=16, with 32 and 64 statistically tied for best. Dropped the catastrophic vt=4; kept vt=8 as a sanity floor; added finer resolution through the good zone (24, 48, 96) and extended past the old ceiling (64) to 128 to find where it actually plateaus or turns back over."
+  },
+  "pipeline.bg_history": {
+    "values": [500, 1000, 2000, 3000, 4000],
+    "rationale": "Sweep-4 winner used history=2000 — the max value tested — with median score 0.83px vs 5.3px at the next tier down (1000). Dropped the clearly-worse low end (100, 250); extended upward (3000, 4000) to check whether the improvement continues past the sweep-4 ceiling or has already plateaued."
+  },
+  "pipeline.gaussian_kernel_size": {
+    "values": [3, 5, 7, 9],
+    "rationale": "Unchanged from sweep-4. A bug in analyse.py meant this param's effect was never extracted/analysed last time (fixed in this branch) — re-swept as-is so we get a first real read on it."
+  },
+  "pipeline.gaussian_sigma_x": {
+    "values": [0.8, 1.0, 1.5, 2.0],
+    "rationale": "Unchanged from sweep-4, same reason as gaussian_kernel_size above — sigma_y still mirrors the pipeline's own fixed value, not swept independently."
+  }
+}

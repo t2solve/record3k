@@ -1,0 +1,15 @@
+{
+    "run_name":             "bgsub_sweep1",
+    "description":          "small campaign: BackgroundSubtraction_CUDA history + varThreshold, real records",
+    "pipeoptimizer_bin":    "/app/bin/pipeoptimizer",
+    "tags_db":              "supervised_records_data.sqlite3",
+    "param_ranges":         "param_ranges_bgsub.json",
+    "base_pipeline":        "pipelines/pipe-v4-base-sweep6.json",
+    "records_archive_root": "/data/records",
+    "out_dir":              "bgsub_sweep1",
+    "run_real": {
+        "n_pipes":   20,
+        "n_workers": 4,
+        "seed":      42
+    }
+}

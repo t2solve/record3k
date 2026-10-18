@@ -1,0 +1,30 @@
+{
+  "_comment": "Baseline run: 3 hand-picked production pipelines (pipelines/*.json), no parameter sweep, same generation set for all three. LensCorrection_CUDA/ProjectPointTo2DSurface_CPU disabled in these pipeline copies since ground truth is raw synthetic pixel space, incompatible with the real-camera lens calibration those two steps otherwise apply. Container-ready as-is (see Containerfile.sim); for host use, edit pipeoptimizer_bin to your local build/bin/pipeoptimizer.",
+
+  "run_name":          "baseline1",
+  "description":       "baseline-3-pipelines-no-sweep",
+
+  "pipeoptimizer_bin": "/app/bin/pipeoptimizer",
+  "data_root":         ".",
+
+  "generate": {
+    "n_records":      13,
+    "static_records":  1,
+    "body_type":      "both",
+    "warmup":         500,
+    "animal_frames":  800,
+    "seed":           42
+  },
+
+  "simulate": {
+    "pipeline_configs": "pipelines/*.json",
+    "n_workers": 12
+  },
+
+  "leaderboard": {
+    "limit": 30,
+    "aggregate": true
+  },
+
+  "cleanup_synth": true
+}

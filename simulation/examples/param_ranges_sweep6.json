@@ -1,0 +1,26 @@
+{
+  "_comment": "Sweep-6 — follow-up to sweep-5. varThreshold turned out not to be a monotonic 'higher is better' knob: median SCORE is near-zero and flat across 16-64, but the *worst-case* outlier grows sharply from vt=64 upward (max SCORE 19px @64, 27px @128) even though the median barely moves and Spearman rho stays negative throughout -- rho only sees the average trend, not the growing tail risk. Re-centred on the 16-64 plateau at finer resolution, kept one sentinel past it (80) to keep confirming the tail-risk growth, dropped 8/96/128 (8 confirmed catastrophic, 96/128 confirmed worse-tail without being better-median). bg_history's effect is real but an order of magnitude weaker than varThreshold (rho -0.06 vs -0.49, eta^2 ~0.03-0.06 vs ~0.4-0.9) and hadn't plateaued at the sweep-5 ceiling (4000) -- shifted the whole window upward to find where it does. gaussian_kernel_size showed a small but consistently unfavourable effect (rho +0.12, kernel=3 tightest/lowest in the sweep-5 violin) -- fixed at 3 in the base pipeline (pipelines/pipe-v4-base-sweep6.json) instead of swept, freeing up LHS budget. gaussian_sigma_x had a real, still-unexplored effect (rho -0.24, eta^2 up to 0.12 on delta_fpr) with no data above 2.0 -- the sweep-4 'best' pipeline used sigma_x=0.8 despite the rho trend now suggesting higher is better, so this is worth resolving properly rather than carrying the sweep-4 assumption forward. NOTE: sweep-5's 03_cluster_overview.png rendered blank ('column not found') for both panels -- analyse.py's per-pipeline aggregation (main(), the df_agg .agg(...) block) still hardcodes the sweep-4 param set (ksize/threshold/min_area/max_contours) instead of the active PARAMS list, so varThreshold/bg_history/gauss_kernel_size/gauss_sigma_x never made it into df_agg. Worth fixing before running sweep-6's analyse step, since the varThreshold x bg_history interaction is exactly what that plot is for.",
+
+  "_fixed_params": {
+    "note": "Fixed in the base pipeline (pipelines/pipe-v4-base-sweep6.json), not varied here. Only 'values' arrays in this file are actually applied by pipe_config_gen — a bare 'value' key is not read by the generator, so these must be baked into the base pipeline JSON, not just documented here.",
+    "pipeline.morph_ksize":          { "value": 5,   "rationale": "sweep-2 winner" },
+    "pipeline.binary_threshold":     { "value": 200, "rationale": "correct regardless of detectShadows (sweep-3)" },
+    "pipeline.bg_detect_shadows":    { "value": 0,   "rationale": "sweep-4: no measurable effect (|rho| < 0.13); ds=0 slightly better within the good-varThreshold subset" },
+    "pipeline.contour_min_area":     { "value": 15,  "rationale": "sweep-4: no measurable effect (|rho| < 0.17); already pipe-v2-clean's value" },
+    "pipeline.contour_max_contours": { "value": 1,   "rationale": "sweep-4: no measurable effect (|rho| < 0.02); already pipe-v2-clean's value" },
+    "pipeline.gaussian_kernel_size": { "value": 3,   "rationale": "sweep-5: weak but consistently unfavourable trend (rho +0.12 on SCORE); k=3 was tightest/lowest violin and matches the sweep-5 overall winner" }
+  },
+
+  "pipeline.bg_var_threshold": {
+    "values": [16, 24, 32, 40, 48, 56, 64, 80],
+    "rationale": "Sweep-5 showed the median SCORE plateau runs flat from 16 through 64, but the worst-case tail (outliers, not the median) grows steadily from 64 upward (max 19px @64 vs ~11px @48, 27px @128). Re-centred with finer steps across the known-good 16-64 plateau to locate the true median optimum, kept one point past it (80) as a tail-risk sentinel, and dropped 8 (confirmed catastrophic, median 5px) and 96/128 (confirmed worse-tail, no better median) to reclaim resolution."
+  },
+  "pipeline.bg_history": {
+    "values": [2000, 3000, 4000, 5000, 6000],
+    "rationale": "Sweep-5 winner used history=4000 (max value tested), tightest/lowest violin of the 5 levels tried, but effect size is an order of magnitude smaller than varThreshold's (rho -0.06, eta^2 ~0.03-0.06). Dropped the clearly-worse floor (500, 1000) and shifted the whole window upward (2000-6000) to find the plateau rather than re-confirming values already known to be worse."
+  },
+  "pipeline.gaussian_sigma_x": {
+    "values": [1.0, 1.5, 2.0, 2.5, 3.0],
+    "rationale": "Sweep-5 gave the first real signal on this param (rho -0.24 on SCORE, up to -0.37 on delta_fpr) — higher sigma_x trending better, with sigma_x=2.0 the tightest/lowest violin of the 4 levels tried. No data exists above 2.0. The sweep-4 hand-picked 'best' pipeline used sigma_x=0.8, which this trend now contradicts — extended the window upward (1.0-3.0) to find where the benefit saturates or reverses, dropping the now-suspect low end (0.8) rather than carrying it forward unexamined."
+  }
+}

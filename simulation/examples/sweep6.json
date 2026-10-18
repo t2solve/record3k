@@ -1,0 +1,32 @@
+{
+  "_comment": "Sweep-6 — follow-up to sweep-5: re-centred bg_var_threshold on the sweep-5 plateau (16-64) at finer resolution plus one tail-risk sentinel (80), shifted bg_history's window upward (2000-6000, was still improving at the sweep-5 ceiling), dropped gaussian_kernel_size from the active sweep (fixed at 3 in the base pipeline — weak, consistently unfavourable), and extended gaussian_sigma_x past the sweep-5 ceiling (1.0-3.0) since higher values are now trending better, contradicting the sweep-4 hand-picked pipeline's sigma_x=0.8. base_pipeline is pipe-v4-base-sweep6.json (= pipe-v3-base-sweep5.json with gaussian_kernel_size fixed 3). See param_ranges_sweep6.json for full rationale per param. IMPORTANT: fix the analyse.py df_agg aggregation bug (see param_ranges_sweep6.json note) before relying on 03_cluster_overview.png from this run — it currently drops all sweep-5/6 params and only carries the stale sweep-4 param set.",
+
+  "run_name":          "sweep6",
+  "description":       "sweep-6 — finer varThreshold/history resolution around the sweep-5 plateau + sigma_x extension past 2.0",
+
+  "pipeoptimizer_bin": "/app/bin/pipeoptimizer",
+  "base_pipeline":     "pipelines/pipe-v4-base-sweep6.json",
+  "param_ranges":      "param_ranges_sweep6.json",
+  "data_root":         ".",
+
+  "generate": {
+    "n_records":      13,
+    "static_records":  1,
+    "body_type":      "both",
+    "warmup":         500,
+    "animal_frames":  800,
+    "seed":           48
+  },
+
+  "simulate": {
+    "n_pipes":   80,
+    "n_workers":  36
+  },
+
+  "leaderboard": {
+    "limit": 30,
+    "aggregate": true
+  },
+
+  "cleanup_synth": true
+}

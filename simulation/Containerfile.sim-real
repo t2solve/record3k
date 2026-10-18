@@ -1,0 +1,144 @@
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │  Containerfile.sim-real  —  real-record pipeline sweep runner            │
+# │                                                                          │
+# │  Builds:  liblbt (shared lib) + pipeoptimizer binary                    │
+# │           + Python venv (subprocess-orchestration deps only — no        │
+# │           matplotlib/pandas/scipy, unlike Containerfile.sim, since       │
+# │           there is no analyse step here yet)                            │
+# │           No VimbaX / camera code compiled.                             │
+# │                                                                          │
+# │  Runs pipeoptimizer's `run-real` subcommand (src/pipeoptimizer/plan.md   │
+# │  step 2) against every "supervised" record — tagged via pipelineviewer's │
+# │  Mode B, ROI defined, not marked a complete failure — driven by          │
+# │  sim_runner_real.py. One sqlite result file per record, written under    │
+# │  the run's out_dir. See Containerfile.sim for the synthetic-record       │
+# │  sweep counterpart (generate → simulate → leaderboard → analyse).        │
+# │                                                                          │
+# │  Build context: the repo root. Only record3k.pro, config/common.pri,    │
+# │  src/ and simulation/examples/ (as default /data/simulation) are copied │
+# │  in. Bind-mount the host data/simulation/ at runtime so                 │
+# │  the tags DB, run configs, and per-record output are shared with the     │
+# │  host. The real record archives live in a *separate* volume — they're   │
+# │  large (single archives run into the GBs) and independently sourced      │
+# │  from wherever records get downloaded to on the host.                   │
+# │                                                                          │
+# │  BUILD:                                                                  │
+# │    podman build -f simulation/Containerfile.sim-real -t record3k-sim-real . │
+# │                                                                          │
+# │  RUN — sweep every supervised record (needs GPU: run-real replays the    │
+# │  same CUDA_ENABLED pipeline steps as the live camera / synthetic sweep): │
+# │    podman run --rm \                                                     │
+# │      --device nvidia.com/gpu=all \                                       │
+# │      -v $(pwd)/data/simulation:/data/simulation \                        │
+# │      -v $RECORDS_DIR:/data/records:ro \
+# │      record3k-sim-real /data/simulation/supervised_sweep1.json          │
+# │                                                                          │
+# │  RUN — force re-run records that already have output:                   │
+# │    podman run --rm --device nvidia.com/gpu=all \                         │
+# │      -v $(pwd)/data/simulation:/data/simulation \                        │
+# │      -v $RECORDS_DIR:/data/records:ro \
+# │      record3k-sim-real /data/simulation/supervised_sweep1.json --force  │
+# │                                                                          │
+# │  Expected layout under data/simulation/ (host and container share the  │
+# │  same relative paths, so run configs work unmodified in either place): │
+# │    data/simulation/supervised_records_data.sqlite3 ← tags DB (read)     │
+# │    data/simulation/param_ranges_sweep6.json         ← sweep config (read)│
+# │    data/simulation/supervised_sweep1.json           ← run config (read) │
+# │    data/simulation/<out_dir>/<record_uid>.sqlite3   ← per-record results │
+# │                                                        (written)         │
+# │                                                                          │
+# │  Minimal data/simulation/supervised_sweep1.json for container use:      │
+# │  {                                                                       │
+# │    "run_name":             "supervised_sweep1",                         │
+# │    "description":          "sweep-6 params, all supervised records",    │
+# │    "pipeoptimizer_bin":    "/app/bin/pipeoptimizer",                    │
+# │    "tags_db":              "supervised_records_data.sqlite3",           │
+# │    "param_ranges":         "param_ranges_sweep6.json",                  │
+# │    "records_archive_root": "/data/records",                             │
+# │    "out_dir":               "supervised_sweep1",                        │
+# │    "run_real": { "n_pipes": 20, "n_workers": 4, "seed": 42 }            │
+# │  }                                                                       │
+# └──────────────────────────────────────────────────────────────────────────┘
+
+FROM cuda-builder:latest
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Etc/UTC \
+    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+
+WORKDIR /app
+
+# Slim build context — only what liblbt + pipeoptimizer (no VimbaX) need: the
+# qmake project + shared settings, the full src/ tree, and the simulation
+# data/config directory. Same rationale as Containerfile.sim.
+COPY record3k.pro record3k.pro
+COPY config/common.pri config/common.pri
+COPY src/ src/
+COPY simulation/examples/ /data/simulation/
+
+# ── system build deps ─────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libsqlite3-dev \
+        libjsoncpp-dev \
+        python3 \
+        python3-venv \
+        python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── sanity-check OpenCV before spending time on the compile ───────────────────
+RUN pkg-config --modversion opencv4 \
+ || (echo "ERROR: opencv4 not found — check PKG_CONFIG_PATH=$PKG_CONFIG_PATH" && exit 1)
+
+# ── ensure liblbt public headers are in canonical location ────────────────────
+RUN if [ ! -d /app/src/liblbt/include/liblbt ]; then \
+      mkdir -p /app/src/liblbt/include/liblbt; \
+      for f in /app/src/liblbt/include/*.h; do \
+        [ -e "$f" ] && mv "$f" /app/src/liblbt/include/liblbt/; \
+      done; \
+    fi
+RUN ls -al /app/src/liblbt/include/liblbt
+
+# ── C++ build (liblbt + pipeoptimizer only, no VimbaX / camera) ──────────────
+# See Containerfile.sim's comment for why each subproject is qmake-ed in place
+# rather than via the top-level record3k.pro SUBDIRS target.
+RUN mkdir -p /app/bin /app/lib
+
+RUN cd src/liblbt && qmake6 CONFIG+=cuda LOG_LEVEL=INFO liblbt.pro
+RUN make -C src/liblbt   -j$(nproc) \
+ && echo "── liblbt done ─────────────────────────────" \
+ && ls -lh /app/lib/liblbt* 2>/dev/null || (echo "ERROR: liblbt not found in /app/lib" && exit 1)
+
+RUN cd src/pipeoptimizer && qmake6 CONFIG+=cuda LOG_LEVEL=INFO pipeoptimizer.pro
+RUN make -C src/pipeoptimizer -j$(nproc) \
+ && echo "── pipeoptimizer done ──────────────────────" \
+ && ls -lh /app/bin/pipeoptimizer 2>/dev/null || (echo "ERROR: pipeoptimizer binary not found in /app/bin" && exit 1)
+
+# ── Python venv ───────────────────────────────────────────────────────────────
+# sim_runner_real.py only needs the standard library (argparse/json/sqlite3/
+# subprocess) — no requirements.txt, unlike Containerfile.sim's analyse.py deps.
+RUN python3 -m venv /app/venv \
+ && /app/venv/bin/pip install --no-cache-dir --upgrade pip
+
+# ── Python scripts ────────────────────────────────────────────────────────────
+COPY src/pipeoptimizer/sim_runner_real.py /app/scripts/
+
+# ── runtime environment ───────────────────────────────────────────────────────
+ENV PATH=/app/bin:/app/venv/bin:$PATH \
+    LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH
+
+# ── data volumes ───────────────────────────────────────────────────────────────
+# mount your host data/simulation/ here at runtime for run configs, the tags DB,
+# and per-record output: -v $(pwd)/data/simulation:/data/simulation
+# mount your real record archives (.tar.gz per record) here, read-only:
+# -v <records-dir>:/data/records:ro
+VOLUME ["/data/simulation", "/data/records"]
+
+# ── final verification ────────────────────────────────────────────────────────
+RUN /app/bin/pipeoptimizer --help 2>&1 | head -5 || true
+RUN /app/venv/bin/python3 /app/scripts/sim_runner_real.py --help
+
+# ── entrypoint ────────────────────────────────────────────────────────────────
+# Positional arg 1 must be the path to the run config JSON.
+# All additional args are forwarded to sim_runner_real.py (--force, --n-pipes, …).
+ENTRYPOINT ["/app/venv/bin/python3", "/app/scripts/sim_runner_real.py"]
+CMD ["--help"]

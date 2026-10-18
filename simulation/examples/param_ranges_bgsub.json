@@ -1,0 +1,21 @@
+{
+    "_comment": "Small campaign: BackgroundSubtraction_CUDA only (history + varThreshold), against real supervised records via pipeoptimizer run-real (src/pipeoptimizer/plan.md step 2), not the synthetic generator. Value ranges reused as-is from sweep-6's already-vetted candidates (see param_ranges_sweep6.json) -- sweep-6 explored these on synthetic data; this campaign re-checks them against real, human-tagged footage instead. Everything else (gaussian kernel/sigma, morph, contour thresholds) stays fixed at data/simulation/pipelines/pipe-v4-base-sweep6.json's values -- pass that as --base-pipeline.",
+    "_fixed_params": {
+        "note": "Fixed in the base pipeline (pipelines/pipe-v4-base-sweep6.json), not varied here. Only 'values' arrays in this file are actually applied by pipe_config_gen -- a bare 'value' key is not read by the generator, so these must be baked into the base pipeline JSON, not just documented here.",
+        "pipeline.gaussian_kernel_size": {"value": 3,   "rationale": "sweep-5: weak but consistently unfavourable trend; k=3 was tightest/lowest violin"},
+        "pipeline.gaussian_sigma_x":     {"value": 1.0, "rationale": "sweep-6 base default -- not swept here, this campaign is bg-subtraction-only"},
+        "pipeline.morph_ksize":          {"value": 5,   "rationale": "sweep-2 winner"},
+        "pipeline.binary_threshold":     {"value": 200, "rationale": "correct regardless of detectShadows (sweep-3)"},
+        "pipeline.bg_detect_shadows":    {"value": 0,   "rationale": "sweep-4: no measurable effect (|rho| < 0.13)"},
+        "pipeline.contour_min_area":     {"value": 15,  "rationale": "sweep-4: no measurable effect (|rho| < 0.17)"},
+        "pipeline.contour_max_contours": {"value": 1,   "rationale": "always 1 -- centroid smear guard"}
+    },
+    "pipeline.bg_var_threshold": {
+        "values": [16, 24, 32, 40, 48, 56, 64, 80],
+        "rationale": "Reused verbatim from sweep-6 (synthetic): median plateau flat 16-64, worst-case tail grows past 64, 80 kept as a tail-risk sentinel."
+    },
+    "pipeline.bg_history": {
+        "values": [2000, 3000, 4000, 5000, 6000],
+        "rationale": "Reused verbatim from sweep-6 (synthetic): shifted window to find the plateau above the confirmed-worse 500/1000 floor."
+    }
+}
