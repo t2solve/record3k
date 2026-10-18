@@ -22,25 +22,12 @@ SUBDIRS = \
     #src/pipelineviewer \
     #src/rerun
 
-# Disabled targets (uncomment to include):
-# src/test2
-# src/test3
-# src/test4
-# src/test5
-# src/test6
-# src/test7
-# src/debugcameraload
+# Legacy test programs (test2-test7, debugcameraload, appgentestvideo) live on
+# branch archive/test-targets.
 
 #define deps
-src/test2.depends = src/liblbt
-src/test3.depends = src/liblbt
-src/test4.depends = src/liblbt
-src/test5.depends = src/liblbt
-src/test6.depends = src/liblbt
-src/test7.depends = src/liblbt
 src/pipeoptimizer = src/liblbt
 src/pipelineviewer.depends = src/liblbt
-src/debugcameraload.depends = src/liblbt
 src/rerun.depends = src/liblbt
 
 
