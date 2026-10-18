@@ -58,6 +58,11 @@ cp -r $PROJECT_ROOT/config/examples/intialrun/* $PROJECT_ROOT/build/bin
 echo "[setup] Copied initial run configuration to build/bin/"
 
 # needed lib files
-mkdir -p $PROJECT_ROOT/build/lib/
-#copy vimba needed lib files 
-cp -r $PROJECT_ROOT/vimbax/api/lib/* $PROJECT_ROOT/build/lib/
+mkdir -p "$PROJECT_ROOT/build/lib/"
+# copy VimbaX runtime libs (only present when the SDK is unpacked to ./vimbax)
+if [[ -d "$PROJECT_ROOT/vimbax/api/lib" ]]; then
+  cp -r "$PROJECT_ROOT"/vimbax/api/lib/* "$PROJECT_ROOT/build/lib/"
+  echo "[setup] Copied VimbaX libs to build/lib/"
+else
+  echo "[setup] vimbax/api/lib not found — skipping VimbaX libs (fine for builds without --vimbax)"
+fi
